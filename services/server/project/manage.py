@@ -11,7 +11,6 @@ def create_app(config) -> Flask:
     app = Flask(__name__, template_folder='../../client/public',
                 static_folder='../../client/public/static')
 
-    print(app.template_folder)
     app_section = config['app']
     app.config['DEBUG'] = app_section.getboolean('debug')
     app.port = app_section['port']
@@ -23,6 +22,18 @@ def create_app(config) -> Flask:
     return app
 
 
+def write_config_sample():
+    config = configparser.ConfigParser()
+    config["app"] = {}
+    config["app"]["host"] = "0.0.0.0"
+    config["app"]["port"] = "5000"
+    config["app"]["debug"] = "true"
+    config["app"]["secret"] = str(os.urandom(24))
+
+    with open("config.ini", "w+") as f:
+        config.write(f)
+
+
 def init():
     global app
 
@@ -30,8 +41,8 @@ def init():
 
     config_parser = configparser.ConfigParser()
     if not config_parser.read(config_file):
-        print('Error reading config.ini. Please copy config.ini.sample to '
-              'config.ini and adjust it.')
+        print('Error reading config.ini. Please edit the automatically generated config.ini to match desired settings.')
+        write_config_sample()
         sys.exit(1)
 
     app = create_app(config_parser)
@@ -41,7 +52,7 @@ def init():
     # app.register_blueprint(api)
 
     # Setup routes
-    import project.views.index
+    import project.views.index  # noqa
 
     print("Done initializing.")
 

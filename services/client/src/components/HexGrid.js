@@ -1,11 +1,17 @@
+function mod(n, m) {
+    return ((n % m) + m) % m;
+}
+
 function euclideanDistance(pt1, pt2) {
     return Math.sqrt(Math.pow(pt1.x - pt2.x, 2) + Math.pow(pt1.y - pt2.y, 2));
 }
 
 function getCanvasMouseCoordinates(canvas, ev) {
     const rect = canvas.getBoundingClientRect();
-    return {x: ev.clientX - rect.left,
-            y: ev.clientY - rect.top}
+    return {
+        x: ev.clientX - rect.left,
+        y: ev.clientY - rect.top
+    }
 }
 
 function Point(x, y) {
@@ -23,7 +29,14 @@ export function HexGrid() {
 
     this.offset = {x: 0, y: 0};
 
-    this.boardImages = [];    this.images = {};
+    this.boardState = [];
+    this.images = {};
+    this.audio_files = {};
+
+    this.tileColour = "#f5e8cb";
+    this.tileEdgeColour = "#5e594d";
+
+    this.selection = null;
 
     this.drawGrid = function () {
         if (this.context == null) return;
@@ -67,29 +80,57 @@ export function HexGrid() {
             }
         }
 
+        this.context.strokeStyle = "black";
+        this.context.lineJoin = "miter";
+        this.context.lineWidth = "2";
         this.context.stroke();
     };
 
     this.setCanvas = function (canvas) {
         this.canvas = canvas;
-        this.canvas.width = 500;
-        this.canvas.height = 500;
+        this.canvas.width = 1000;
+        this.canvas.height = 800;
         this.context = this.canvas.getContext("2d");
     };
 
     this.update = function () {
         this.drawGrid();
 
-        this.boardImages.forEach((obj) => {
-            this.drawImage(obj.image, obj.x, obj.y);
-        })
+        // TODO: check performance of dictionary querying.
+        for (const [y, row] of Object.entries(this.boardState)) {
+            for (const [x, val] of Object.entries(row)) {
+                let pos = this.getCanvasFromCoordinates(x, y);
+                this.drawTile(val.image, pos.x, pos.y);
+            }
+        }
+
+        if (this.selection !== null) {
+            // Check if the tile has been placed on the board before.
+            if (this.selection.x !== null) {
+                // Mark available tiles
+                let neighbours = this.getNeighbours(new Point(this.selection.x, this.selection.y));
+                neighbours.forEach(neighbour => {
+                    let secondNeighbours = this.getNeighbours(neighbour);
+                    for (let secondNeighbour of secondNeighbours) {
+                        let tile = this.getTile(secondNeighbour.x, secondNeighbour.y);
+                        if (tile !== null && this.getTile(neighbour.x, neighbour.y) === null) {
+                            this.markAvailable(neighbour.x, neighbour.y);
+                            return;
+                        }
+                    }
+                });
+            }
+
+            // Always draw selected tile on top of everything.
+            this.drawTile(this.selection.image, this.mouseState.pos.x, this.mouseState.pos.y);
+        }
     };
 
     this.getCanvasFromCoordinates = function (x, y) {
         let xIncrement = this.hexSize * 0.866025;  // (sqrt(3) / 2)
         let yIncrement = this.hexSize * 1.5;
 
-        let xBump = (y % 2) * xIncrement;
+        let xBump = mod(y, 2) * xIncrement;
         return {
             x: xBump + x * (xIncrement * 2) + this.offset.x,
             y: y * yIncrement + this.offset.y + this.hexSize / 2
@@ -101,19 +142,25 @@ export function HexGrid() {
         this.context.drawImage(this.images[image], coords.x - this.hexSize / 2, coords.y - this.hexSize / 2, this.hexSize, this.hexSize);
     };
 
-    this.addImage = function (image, x, y) {
-        this.boardImages.push({
-            image: image,
-            x: x,
-            y: y
-        });
+    this.makeTile = function(image, x, y, onclickCallback) {
+        return {x: x, y: y, image: image, callback: onclickCallback};
+    }
+
+    this.addObject = function (image, x, y, onclickCallback) {
+        let tile = this.makeTile(image, x, y, onclickCallback);
+        this.putTile(tile, x, y);
     };
 
     this.mouseState = {
         prev: null,
         click: false,
-        mouseDownPoint: null
+        mouseDownPoint: null,
+        pos: null
     };
+
+    this.select = function(name) {
+        this.selection = this.makeTile(name, null, null, this.tileClickHandler);
+    }
 
     this.setPrev = function (ev) {
         this.mouseState.prev = {
@@ -121,6 +168,10 @@ export function HexGrid() {
             y: ev.y
         }
     };
+
+    this.setPos = function(ev) {
+        this.mouseState.pos = getCanvasMouseCoordinates(this.canvas, ev);
+    }
 
     this.setOffset = function (pt1, pt2) {
         this.offset.x += pt2.x - pt1.x;
@@ -133,38 +184,62 @@ export function HexGrid() {
             y: ev.clientY
         };
 
+
         this.setPrev(ev);
+        this.setPos(ev);
         this.mouseState.mouseDownPoint = pt;
         this.mouseState.click = true;
     };
 
     this.handleMouseMove = function (ev) {
+        this.setPos(ev);
+
         if (!this.mouseState.click) return;
         let pt = {
             x: ev.clientX,
             y: ev.clientY
         };
-
         this.setOffset(this.mouseState.prev, pt);
         this.setPrev(ev);
     };
 
-    this.getClosestHexagon = function(ev) {
+    this.getTile = function (x, y) {
+        if (this.boardState[y] !== undefined && this.boardState[y][x] !== undefined) {
+            return this.boardState[y][x];
+        }
+        return null;
+    }
+
+    this.putTile = function (tile, x, y) {
+        if (this.boardState[y] === undefined) this.boardState[y] = {};
+        this.boardState[y][x] = tile;
+    }
+
+    this.tileClickHandler = function (self, ev, tile) {
+        // Select tile
+        self.selection = tile;
+        delete self.boardState[tile.y][tile.x];
+    }
+
+    this.getClosestHexagon = function (ev) {
+        // TODO: Optimize this to look at less hexagons instead.
+
         let xIncrement = this.hexSize * 0.866025;  // (sqrt(3) / 2)
         let yIncrement = this.hexSize * 1.5;
 
         let cvs = getCanvasMouseCoordinates(this.canvas, ev);
 
-        let xCenter = Math.round((cvs.x - this.offset.x) / (xIncrement * 2));
-        let yCenter = Math.round((cvs.y - this.offset.y + this.hexSize) / yIncrement);
-
+        let yCenter = Math.round((cvs.y - this.offset.y - this.hexSize) / yIncrement);
+        let xCenter = Math.round((cvs.x - this.offset.x - mod(yCenter, 2) * xIncrement) / (xIncrement * 2));
         // y: y * yIncrement + this.offset.y + this.hexSize / 2
         // Check of the two upper neighbours, and this point, which center point is the closest.
-        let points = this.getNeighbours(new Point(xCenter, yCenter));
+        let points = this.getSurroundingArea(new Point(xCenter, yCenter));
         let canvasPoints = [];
         points.forEach((point) => {
-            canvasPoints.push(this.getCanvasFromCoordinates(point.x, point.y));
+            let pt = this.getCanvasFromCoordinates(point.x, point.y);
+            canvasPoints.push(pt);
         });
+
         let closest = points[0];
         let minDist = euclideanDistance(closest, cvs);
         canvasPoints.forEach((point) => {
@@ -175,12 +250,30 @@ export function HexGrid() {
             }
         });
 
-        this.context.fillRect(closest.x, closest.y, 10, 10);
-
+        // Doing +0.5 then Math.floor makes sure we never get -0.
+        let y = Math.floor((closest.y - this.offset.y) / yIncrement + 0.5);
+        let x = Math.floor((closest.x - this.offset.x - mod(y, 2) * xIncrement) / (xIncrement * 2) + 0.5)
         return {
-            x: Math.round((closest.x - this.offset.x) / (xIncrement * 2)),
-            y: Math.round((closest.y - this.offset.y) / yIncrement)
+            x: x,
+            y: y
         };
+    };
+
+    this.setTileStyle = function() {
+        this.context.strokeStyle = this.tileEdgeColour;
+        this.context.lineJoin = "round";
+        this.context.lineWidth = "4";
+        this.context.fillStyle = this.tileColour;
+    }
+
+    this.markAvailable = function(x, y) {
+        let pt = this.getCanvasFromCoordinates(x, y);
+
+        this.setTileStyle();
+        this.context.beginPath();
+        this.context.arc(pt.x, pt.y, this.hexSize / 2, 0, Math.PI * 2);
+        this.context.stroke();
+        this.context.fill();
     };
 
     this.handleMouseUp = function (ev) {
@@ -191,13 +284,67 @@ export function HexGrid() {
             // Register this as a click instead of a drag.
             let point = this.getClosestHexagon(ev);
 
+            if (this.selection === null) {
+                // If no tile is yet selected, select the currently hovering tile.
+                let tile = this.getTile(point.x, point.y);
+                if (tile !== null) {
+                    tile.callback(this, ev, tile);
+                    this.audio_files["tile_sound_2"].play();
+                }
+            } else {
+                // Try to deselect currently selected tile and place on hovering tile.
+                let tile = this.getTile(point.x, point.y);
+                if (tile === null) {
+                    this.selection.x = point.x;
+                    this.selection.y = point.y;
+                    this.putTile(this.selection, point.x, point.y);
+                    this.selection = null;
+                    this.audio_files["tile_sound_2"].play();
+                }
+            }
         }
     };
 
-    this.getNeighbours = function(point) {
-        // Center
-        let points = [new Point(point.x, point.y)];
+    this.drawTile = function(image, x, y) {
+        let xIncrement = this.hexSize * 0.866025;  // (sqrt(3) / 2)
 
+        let xStart = x - xIncrement;
+        let yStart = y - this.hexSize / 2;
+
+        let tileThickness = 15;
+        this.setTileStyle();
+
+
+        this.context.beginPath();
+        this.context.moveTo(xStart, yStart - tileThickness);
+        this.context.lineTo(xStart + xIncrement, yStart - 0.5 * this.hexSize - tileThickness);
+        this.context.lineTo(xStart + 2*xIncrement, yStart - tileThickness);
+        this.context.lineTo(xStart + 2*xIncrement, yStart + this.hexSize - tileThickness);
+        this.context.lineTo(xStart + xIncrement, yStart + 1.5 * this.hexSize - tileThickness);
+        this.context.lineTo(xStart, yStart  + this.hexSize - tileThickness);
+        this.context.closePath();
+        this.context.stroke();
+        this.context.fill();
+
+        // 3d effect.
+        this.context.beginPath();
+        this.context.moveTo(xStart + 2*xIncrement, yStart  + this.hexSize - tileThickness);
+        this.context.lineTo(xStart + 2*xIncrement, yStart + this.hexSize);
+        this.context.lineTo(xStart + xIncrement, yStart + 1.5 * this.hexSize);
+        this.context.lineTo(xStart, yStart + this.hexSize);
+        this.context.lineTo(xStart, yStart + this.hexSize - tileThickness);
+        this.context.lineTo(xStart + xIncrement, yStart + 1.5 * this.hexSize - tileThickness);
+        this.context.closePath();
+        this.context.stroke();
+        this.context.fill();
+
+        let s = this.hexSize / 2;
+        this.context.drawImage(this.images[image],
+            x - s, y - s - tileThickness, this.hexSize, this.hexSize);
+    };
+
+    this.getNeighbours = function(point) {
+        let points = [];
         // Left and right
         points.push(new Point(point.x - 1, point.y));
         points.push(new Point(point.x + 1, point.y));
@@ -207,19 +354,32 @@ export function HexGrid() {
         points.push(new Point(point.x, point.y + 1));
 
         // The other top and bottom
-        let bump = (point.y % 2) * 2 - 1;
+        let bump = mod(point.y, 2) * 2 - 1;
         points.push(new Point(point.x + bump, point.y - 1));
         points.push(new Point(point.x + bump, point.y + 1));
+        return points;
+    }
+
+    this.getSurroundingArea = function (point) {
+        // Center
+        let points = this.getNeighbours(point);
+        points.push(new Point(point.x, point.y));
 
         return points;
     };
 
-    this.preloadImages = function () {
+    this.preloadResources = function () {
         let imgNames = ["ladybug", "queen"];
 
         imgNames.forEach((name) => {
-            let img = new Image(); img.src = "static/images/" + name + ".png";
+            let img = new Image();
+            img.src = "static/images/" + name + ".png";
             this.images[name] = img;
         });
+
+        let audioNames = ["tile_sound_1", "tile_sound_2"];
+        audioNames.forEach((name) => {
+            this.audio_files[name] = new Audio("static/audio/" + name + ".wav");
+        })
     }
 }
