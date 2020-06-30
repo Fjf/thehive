@@ -18,7 +18,7 @@ export default function Game() {
         hexGrid.addImage("ladybug", 0, 0);
         hexGrid.addImage("queen", 1, 1);
 
-        setInterval(() => hexGrid.update(), 1000/60);
+        setInterval(() => hexGrid.update(), 1000);
     }, []);
 
     return <div className={"content-wrapper"}>

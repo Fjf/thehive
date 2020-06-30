@@ -2,6 +2,17 @@ function euclideanDistance(pt1, pt2) {
     return Math.sqrt(Math.pow(pt1.x - pt2.x, 2) + Math.pow(pt1.y - pt2.y, 2));
 }
 
+function getCanvasMouseCoordinates(canvas, ev) {
+    const rect = canvas.getBoundingClientRect();
+    return {x: ev.clientX - rect.left,
+            y: ev.clientY - rect.top}
+}
+
+function Point(x, y) {
+    this.x = x;
+    this.y = y;
+}
+
 export function HexGrid() {
     this.canvas = null;
     this.context = null;
@@ -78,7 +89,7 @@ export function HexGrid() {
         let xIncrement = this.hexSize * 0.866025;  // (sqrt(3) / 2)
         let yIncrement = this.hexSize * 1.5;
 
-        let xBump = (x % 2) * xIncrement;
+        let xBump = (y % 2) * xIncrement;
         return {
             x: xBump + x * (xIncrement * 2) + this.offset.x,
             y: y * yIncrement + this.offset.y + this.hexSize / 2
@@ -138,14 +149,69 @@ export function HexGrid() {
         this.setPrev(ev);
     };
 
+    this.getClosestHexagon = function(ev) {
+        let xIncrement = this.hexSize * 0.866025;  // (sqrt(3) / 2)
+        let yIncrement = this.hexSize * 1.5;
+
+        let cvs = getCanvasMouseCoordinates(this.canvas, ev);
+
+        let xCenter = Math.round((cvs.x - this.offset.x) / (xIncrement * 2));
+        let yCenter = Math.round((cvs.y - this.offset.y + this.hexSize) / yIncrement);
+
+        // y: y * yIncrement + this.offset.y + this.hexSize / 2
+        // Check of the two upper neighbours, and this point, which center point is the closest.
+        let points = this.getNeighbours(new Point(xCenter, yCenter));
+        let canvasPoints = [];
+        points.forEach((point) => {
+            canvasPoints.push(this.getCanvasFromCoordinates(point.x, point.y));
+        });
+        let closest = points[0];
+        let minDist = euclideanDistance(closest, cvs);
+        canvasPoints.forEach((point) => {
+            let dist = euclideanDistance(point, cvs);
+            if (dist < minDist) {
+                minDist = dist;
+                closest = point;
+            }
+        });
+
+        this.context.fillRect(closest.x, closest.y, 10, 10);
+
+        return {
+            x: Math.round((closest.x - this.offset.x) / (xIncrement * 2)),
+            y: Math.round((closest.y - this.offset.y) / yIncrement)
+        };
+    };
+
     this.handleMouseUp = function (ev) {
         this.mouseState.prev = null;
         this.mouseState.click = false;
 
         if (euclideanDistance(ev, this.mouseState.mouseDownPoint) < 10) {
             // Register this as a click instead of a drag.
+            let point = this.getClosestHexagon(ev);
 
         }
+    };
+
+    this.getNeighbours = function(point) {
+        // Center
+        let points = [new Point(point.x, point.y)];
+
+        // Left and right
+        points.push(new Point(point.x - 1, point.y));
+        points.push(new Point(point.x + 1, point.y));
+
+        // Top and bottom
+        points.push(new Point(point.x, point.y - 1));
+        points.push(new Point(point.x, point.y + 1));
+
+        // The other top and bottom
+        let bump = (point.y % 2) * 2 - 1;
+        points.push(new Point(point.x + bump, point.y - 1));
+        points.push(new Point(point.x + bump, point.y + 1));
+
+        return points;
     };
 
     this.preloadImages = function () {
@@ -155,6 +221,5 @@ export function HexGrid() {
             let img = new Image(); img.src = "static/images/" + name + ".png";
             this.images[name] = img;
         });
-
     }
 }
