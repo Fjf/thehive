@@ -1,10 +1,11 @@
 import React, {useEffect, useState} from 'react';
 import {TextField} from '@material-ui/core';
 import {HexGrid} from "./HexGrid";
-import { useCookies } from 'react-cookie';
+import {useCookies} from 'react-cookie';
 import socketIOClient from "socket.io-client";
 import Button from "@material-ui/core/Button";
 import Chat from "./Chat";
+import IconButton from "@material-ui/core/IconButton";
 
 // SocketIO data.
 // const ENDPOINT = "http://localhost:5000";
@@ -21,13 +22,20 @@ const chatData = {
     socket: socket
 };
 
+const initialTileNames = [
+    new TileSelection("queen", 1),
+    new TileSelection("spider", 2),
+    new TileSelection("beetle", 2),
+    new TileSelection("grasshopper", 3),
+    new TileSelection("ant", 3),
+    new TileSelection("mosquito", 1),
+    new TileSelection("ladybug", 1)
+];
+
 
 export default function Game() {
     let board = React.useRef(null);
-    const [tileNames, setTileNames] = useState([
-        new TileSelection("ladybug", 3),
-        new TileSelection("queen", 1)
-    ]);
+    const [tileNames, setTileNames] = useState(initialTileNames);
 
     const [cookies, setCookie, removeCookie] = useCookies(['username', 'room']);
     const [username, setUsername] = useState("");
@@ -37,7 +45,7 @@ export default function Game() {
     useEffect(() => {
         // Register canvas and load resources.
         hexGrid.setCanvas(board.current);
-        hexGrid.preloadResources();
+        hexGrid.preloadResources(initialTileNames);
 
         // Initialize event handlers for mouse.
         document.addEventListener('mousedown', (ev) => hexGrid.handleMouseDown(ev));
@@ -121,7 +129,10 @@ export default function Game() {
                     room: room,
                     user: username,
                     data: {
-                        pos: hexGrid.mouseState.pos,
+                        pos: {
+                            x: hexGrid.mouseState.pos.x - hexGrid.offset.x,
+                            y: hexGrid.mouseState.pos.y - hexGrid.offset.y,
+                        },
                         tile: {
                             ...hexGrid.selection,
                             mine: false
@@ -129,7 +140,7 @@ export default function Game() {
                     }
                 }
             )
-        }, 1000/30);
+        }, 1000 / 30);
 
         setIsConnected(true);
     }
@@ -169,24 +180,34 @@ export default function Game() {
                 tileNames.map((tileSelection, i) => {
                     let srcName = "static/images/" + tileSelection.name + ".png";
                     return <div key={i}>
-                        <div>{tileSelection.amount} tiles left.</div>
-                        <button
+                        <div>{tileSelection.amount} {tileSelection.name}{tileSelection.amount !== 1 ? "s" : ""} left.</div>
+                        <IconButton
+                            variant={"contained"}
+                            color={"primary"}
                             disabled={!isConnected || tileSelection.amount === 0}
                             onClick={
                                 () => {
+                                    let tileIncrementName = null;
+                                    if (hexGrid.selection !== null) {
+                                        tileIncrementName = hexGrid.selection.image;
+                                    }
                                     hexGrid.select(tileSelection.name);
                                     setTileNames([...tileNames].map(object => {
-                                        if (object.name === tileSelection.name) {
-                                            return {
-                                                ...object,
-                                                amount: object.amount - 1
-                                            }
-                                        } else return object;
+                                        let amount = object.amount;
+
+                                        if (object.name === tileSelection.name) amount -= 1;
+
+                                        if (object.name === tileIncrementName) amount += 1;
+
+                                        return {
+                                            ...object,
+                                            amount: amount
+                                        };
                                     }));
                                 }
                             }>
-                            <img src={srcName} alt="my image" width={80} height={80}/>
-                        </button>
+                            <img src={srcName} alt="my image" width={60} height={60}/>
+                        </IconButton>
                     </div>
                 })
             }

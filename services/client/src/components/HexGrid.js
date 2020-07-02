@@ -139,7 +139,7 @@ export function HexGrid() {
         }
 
         if (this.enemyMouseState.pos !== null) {
-            this.drawTile(this.enemyMouseState.tile, this.enemyMouseState.pos.x, this.enemyMouseState.pos.y)
+            this.drawTile(this.enemyMouseState.tile, this.enemyMouseState.pos.x + this.offset.x, this.enemyMouseState.pos.y + this.offset.y)
         }
     };
 
@@ -321,6 +321,7 @@ export function HexGrid() {
     };
 
     this.handleMouseUp = function (ev) {
+        if (this.mouseState.mouseDownPoint === null) return;
 
         this.mouseState.prev = null;
         this.mouseState.click = false;
@@ -421,13 +422,11 @@ export function HexGrid() {
         return points;
     };
 
-    this.preloadResources = function () {
-        let imgNames = ["ladybug", "queen"];
-
-        imgNames.forEach((name) => {
+    this.preloadResources = function (initialTileNames) {
+        initialTileNames.forEach((tileName) => {
             let img = new Image();
-            img.src = "static/images/" + name + ".png";
-            this.images[name] = img;
+            img.src = "static/images/" + tileName.name + ".png";
+            this.images[tileName.name] = img;
         });
 
         let audioNames = ["tile_sound_1", "tile_sound_2"];
