@@ -1,5 +1,11 @@
+from gevent import monkey
+monkey.patch_all()
 
+from geventwebsocket import WebSocketServer
 
 if __name__ == "__main__":
     from project.manage import app
-    app.run(threaded=True, host=app.host, port=app.port, debug=True)
+
+    http_server = WebSocketServer(('0.0.0.0', 5000), app, debug=True)
+    http_server.serve_forever()
+    # app.run(threaded=True, host=app.host, port=app.port, debug=True)

@@ -1,10 +1,13 @@
 import configparser
 import os
 import sys
+import socketio
 
 from flask import Flask
+from flask_socketio import SocketIO
 
 global app
+global sio
 
 
 def create_app(config) -> Flask:
@@ -36,6 +39,7 @@ def write_config_sample():
 
 def init():
     global app
+    global sio
 
     config_file = os.getenv('CONFIG_FILE', 'config.ini')
 
@@ -46,6 +50,7 @@ def init():
         sys.exit(1)
 
     app = create_app(config_parser)
+    sio = SocketIO(app, async_mode='gevent')
 
     # Setup blueprints
     # from api import api
@@ -53,6 +58,7 @@ def init():
 
     # Setup routes
     import project.views.index  # noqa
+    import project.socket  # noqa
 
     print("Done initializing.")
 
