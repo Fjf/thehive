@@ -1,3 +1,5 @@
+from typing import Optional
+
 from project.game.Player import Player
 
 
@@ -49,7 +51,7 @@ class Board:
         hive_tiles = []
         return hive_tiles
 
-    def move(self, original_tile: Tile, new_tile: Tile):
+    def move(self, original_tile: Optional[Tile], new_tile: Tile):
         """
         Attempts to move the original tile to the new tile location.
         If it succeeds, returns True, otherwise False
