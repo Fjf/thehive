@@ -83,35 +83,65 @@ export default function Game() {
         setCookie("username", username, {sameSite: "strict"});
         setCookie("room", room, {sameSite: "strict"});
 
-        // Setup socket eventlisteners and join the selected room.
-        socket.emit("join", {room: room});
+        // Setup socket event listeners and join the selected room.
+        socket.emit("join", {
+            room: room,
+            username: username
+        });
 
-        socket.on("placeTile", (data) => {
-            // Remove the hover mouse state.
-            hexGrid.enemyMouseState.pos = null;
+        socket.on("boardState", (rawResponse) => {
+            let response = JSON.parse(rawResponse);
+            hexGrid.setBoardState(response, username);
+        });
 
-            // Put tile on its new position.
-            let tile = hexGrid.makeTile(data.image, data.x, data.y, null);
-            tile.mine = false;
+        socket.on("placeTile", (response) => {
+            let data = response.data;
+
+            // Create a tile on desired position
+            let tile;
+            if (response.username === username) {
+                // Place my tile
+                tile = hexGrid.makeTile(data.image, data.x, data.y, hexGrid.tileClickHandler);
+                tile.mine = true;
+                // Remove tile from cursor.
+                hexGrid.selection = null;
+            } else {
+                // Place opponents tile.
+                tile = hexGrid.makeTile(data.image, data.x, data.y, null);
+                tile.mine = false;
+                // Remove the hover mouse state.
+                hexGrid.enemyMouseState.pos = null;
+            }
             hexGrid.putTile(tile, data.x, data.y);
+            hexGrid.audio_files["tile_sound_2"].currentTime = 0.0;
+            hexGrid.audio_files["tile_sound_2"].play();
         });
 
         hexGrid.onTilePlaceHandler = (tile) => {
             socket.emit("placeTile", {
                 room: room,
-                user: username,
+                username: username,
                 data: tile
             });
         };
 
-        socket.on("pickupTile", (data) => {
+        socket.on("pickupTile", (response) => {
+            let data = response.data;
+
+            if (response.username === username) {
+                // Make a copy of the tile data.
+                let tile = hexGrid.getTile(data.x, data.y);
+                hexGrid.selection = {
+                    ...tile
+                };
+            }
             hexGrid.removeTile(data.x, data.y);
         });
 
         hexGrid.onTilePickupHandler = (tile) => {
             socket.emit("pickupTile", {
                 room: room,
-                user: username,
+                username: username,
                 data: tile
             });
         };
@@ -127,7 +157,7 @@ export default function Game() {
 
             socket.emit("mouseHover", {
                     room: room,
-                    user: username,
+                    username: username,
                     data: {
                         pos: {
                             x: hexGrid.mouseState.pos.x - hexGrid.offset.x,

@@ -11,7 +11,7 @@ function getCanvasMouseCoordinates(canvas, ev) {
     const {width, height} = canvas.getBoundingClientRect();
     return {
         x: (ev.x - rect.left) * (canvas.width / width),
-        y: (ev.y - rect.top) *  (canvas.height / height)
+        y: (ev.y - rect.top) * (canvas.height / height)
     };
 }
 
@@ -36,7 +36,7 @@ export function HexGrid() {
 
     this.offset = {x: 0, y: 0};
 
-    this.boardState = [];
+    this.boardState = {};
     this.images = {};
     this.audio_files = {};
 
@@ -51,7 +51,24 @@ export function HexGrid() {
 
     this.selection = null;
 
-    this.drawGrid = function () {
+    this.setBoardState = function(data, username) {
+        for (const [y, row] of Object.entries(data)) {
+            for (const [x, val] of Object.entries(row)) {
+                let tile;
+                if (val.owner === username) {
+                    tile = this.makeTile(val.type, x, y, this.tileClickHandler);
+                    tile.mine = true;
+                } else {
+                    tile = this.makeTile(val.type, x, y, null);
+                    tile.mine = false;
+                }
+
+                this.putTile(tile, x, y);
+            }
+        }
+    };
+
+    this.drawGrid = function() {
         if (this.context == null) return;
 
         this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -99,14 +116,14 @@ export function HexGrid() {
         this.context.stroke();
     };
 
-    this.setCanvas = function (canvas) {
+    this.setCanvas = function(canvas) {
         this.canvas = canvas;
         this.canvas.width = 1000;
         this.canvas.height = 800;
         this.context = this.canvas.getContext("2d");
     };
 
-    this.update = function () {
+    this.update = function() {
         this.drawGrid();
 
         // TODO: check performance of dictionary querying.
@@ -143,7 +160,7 @@ export function HexGrid() {
         }
     };
 
-    this.getCanvasFromCoordinates = function (x, y) {
+    this.getCanvasFromCoordinates = function(x, y) {
         let xIncrement = this.hexSize * 0.866025;  // (sqrt(3) / 2)
         let yIncrement = this.hexSize * 1.5;
 
@@ -154,12 +171,12 @@ export function HexGrid() {
         };
     };
 
-    this.drawImage = function (image, x, y) {
+    this.drawImage = function(image, x, y) {
         let coords = this.getCanvasFromCoordinates(x, y);
         this.context.drawImage(this.images[image], coords.x - this.hexSize / 2, coords.y - this.hexSize / 2, this.hexSize, this.hexSize);
     };
 
-    this.makeTile = function (image, x, y, onclickCallback) {
+    this.makeTile = function(image, x, y, onclickCallback) {
         return {x: x, y: y, image: image, callback: onclickCallback, mine: true};
     };
 
@@ -168,12 +185,12 @@ export function HexGrid() {
         tile: null
     };
 
-    this.setEnemyHover = function (data) {
+    this.setEnemyHover = function(data) {
         this.enemyMouseState.pos = data.pos;
         this.enemyMouseState.tile = data.tile;
     };
 
-    this.addObject = function (image, x, y, onclickCallback) {
+    this.addObject = function(image, x, y, onclickCallback) {
         let tile = this.makeTile(image, x, y, onclickCallback);
         this.putTile(tile, x, y);
     };
@@ -185,27 +202,27 @@ export function HexGrid() {
         pos: null
     };
 
-    this.select = function (name) {
+    this.select = function(name) {
         this.selection = this.makeTile(name, null, null, this.tileClickHandler);
     };
 
-    this.setPrev = function (ev) {
+    this.setPrev = function(ev) {
         this.mouseState.prev = {
             x: ev.x,
             y: ev.y
         }
     };
 
-    this.setPos = function (ev) {
+    this.setPos = function(ev) {
         this.mouseState.pos = getCanvasMouseCoordinates(this.canvas, ev);
     };
 
-    this.setOffset = function (pt1, pt2) {
+    this.setOffset = function(pt1, pt2) {
         this.offset.x += pt2.x - pt1.x;
         this.offset.y += pt2.y - pt1.y;
     };
 
-    this.handleMouseDown = function (ev) {
+    this.handleMouseDown = function(ev) {
         if (!isInCanvas(this.canvas, ev)) return;
 
         let pt = {
@@ -220,7 +237,7 @@ export function HexGrid() {
         this.mouseState.click = true;
     };
 
-    this.handleMouseMove = function (ev) {
+    this.handleMouseMove = function(ev) {
         this.setPos(ev);
 
         if (!this.mouseState.click) return;
@@ -232,33 +249,32 @@ export function HexGrid() {
         this.setPrev(ev);
     };
 
-    this.getTile = function (x, y) {
+    this.getTile = function(x, y) {
         if (this.boardState[y] !== undefined && this.boardState[y][x] !== undefined) {
             return this.boardState[y][x];
         }
         return null;
     };
 
-    this.removeTile = function (x, y) {
+    this.removeTile = function(x, y) {
         if (this.boardState[y] !== undefined && this.boardState[y][x] !== undefined) {
             delete this.boardState[y][x];
         }
     };
 
-    this.putTile = function (tile, x, y) {
+    this.putTile = function(tile, x, y) {
         if (this.boardState[y] === undefined) this.boardState[y] = {};
         tile.x = x;
         tile.y = y;
         this.boardState[y][x] = tile;
     };
 
-    this.tileClickHandler = function (self, ev, tile) {
-        // Select tile
-        self.selection = tile;
-        delete self.boardState[tile.y][tile.x];
+    this.tileClickHandler = function(self, ev, tile) {
+        // Local onclick handler for tiles.
+        // E.g. sound files can be played here.
     };
 
-    this.getClosestHexagon = function (ev) {
+    this.getClosestHexagon = function(ev) {
         // TODO: Optimize this to look at less hexagons instead.
         let xIncrement = this.hexSize * 0.866025;  // (sqrt(3) / 2)
         let yIncrement = this.hexSize * 1.5;
@@ -296,21 +312,21 @@ export function HexGrid() {
         };
     };
 
-    this.setTileStyle = function () {
+    this.setTileStyle = function() {
         this.context.strokeStyle = this.tileEdgeColour;
         this.context.lineJoin = "round";
         this.context.lineWidth = "4";
         this.context.fillStyle = this.tileColour;
     };
 
-    this.setRemoteTileStyle = function () {
+    this.setRemoteTileStyle = function() {
         this.context.strokeStyle = this.remoteTileEdgeColour;
         this.context.lineJoin = "round";
         this.context.lineWidth = "4";
         this.context.fillStyle = this.remoteTileColour;
     };
 
-    this.markAvailable = function (x, y) {
+    this.markAvailable = function(x, y) {
         let pt = this.getCanvasFromCoordinates(x, y);
 
         this.setTileStyle();
@@ -320,7 +336,7 @@ export function HexGrid() {
         this.context.fill();
     };
 
-    this.handleMouseUp = function (ev) {
+    this.handleMouseUp = function(ev) {
         if (this.mouseState.mouseDownPoint === null) return;
 
         this.mouseState.prev = null;
@@ -335,6 +351,7 @@ export function HexGrid() {
                 let tile = this.getTile(point.x, point.y);
                 if (tile !== null) {
                     tile.callback(this, ev, tile);
+                    this.audio_files["tile_sound_2"].currentTime = 0.0;
                     this.audio_files["tile_sound_2"].play();
                     this.onTilePickupHandler(tile);
                 }
@@ -342,21 +359,17 @@ export function HexGrid() {
                 // Try to deselect currently selected tile and place on hovering tile.
                 let tile = this.getTile(point.x, point.y);
                 if (tile === null) {
-
-                    this.selection.x = point.x;
-                    this.selection.y = point.y;
-                    this.putTile(this.selection, point.x, point.y);
+                    this.selection.new_x = point.x;
+                    this.selection.new_y = point.y;
+                    // Cannot place immediately, because server needs to validate position is valid first.
+                    // this.putTile(this.selection, point.x, point.y);
                     this.onTilePlaceHandler(this.selection);
-
-                    this.selection = null;
-
-                    this.audio_files["tile_sound_2"].play();
                 }
             }
         }
     };
 
-    this.drawTile = function (tile, x, y) {
+    this.drawTile = function(tile, x, y) {
         let xIncrement = this.hexSize * 0.866025;  // (sqrt(3) / 2)
 
         let xStart = x - xIncrement;
@@ -397,7 +410,7 @@ export function HexGrid() {
             x - s, y - s - tileThickness, this.hexSize, this.hexSize);
     };
 
-    this.getNeighbours = function (point) {
+    this.getNeighbours = function(point) {
         let points = [];
         // Left and right
         points.push(new Point(point.x - 1, point.y));
@@ -414,7 +427,7 @@ export function HexGrid() {
         return points;
     };
 
-    this.getSurroundingArea = function (point) {
+    this.getSurroundingArea = function(point) {
         // Center
         let points = this.getNeighbours(point);
         points.push(new Point(point.x, point.y));
@@ -422,7 +435,7 @@ export function HexGrid() {
         return points;
     };
 
-    this.preloadResources = function (initialTileNames) {
+    this.preloadResources = function(initialTileNames) {
         initialTileNames.forEach((tileName) => {
             let img = new Image();
             img.src = "static/images/" + tileName.name + ".png";

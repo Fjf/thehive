@@ -7,7 +7,7 @@ def main():
     tile = Tile(0, 0)
     tile.type = TileTypes.GRASSHOPPER
 
-    board.move(None, tile)
+    tiles = board.get_tiles_around(tile)
 
     print("Test1`23")
 
