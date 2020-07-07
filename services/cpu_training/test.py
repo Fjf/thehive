@@ -1,9 +1,15 @@
 import random
 
+import numpy as np
+
 from project.database.models import UserModel
 from project.game.Board import Board, Tile
 
-MAX_MOVES = 100
+MAX_MOVES = 50
+
+
+TILE_TYPES = ["queen", "spider", "beetle", "grasshopper", "ant", "mosquito", "ladybug"]
+NAMES = ["CPU1", "CPU2"]
 
 
 def shift_to_00(tiles: dict):
@@ -12,21 +18,22 @@ def shift_to_00(tiles: dict):
     for y, row in tiles.items():
         if y < min_y:
             min_y = y
-        for x, items in tiles.items():
+        for x, items in row.items():
             if x < min_x:
                 min_x = x
 
-    shifted = {}
+    # TODO: Reorder to single dimension array
+    data = np.zeros(26 * 26 * 14)
     for y, row in tiles.items():
-        shifted_row = {}
-        for x, items in tiles.items():
-            shifted_row[x - min_x] = items.copy()
-        shifted[y - min_y] = shifted_row
+        for x, items in row.items():
+            top = items[-1]
+            top_idx = TILE_TYPES.index(top.type)
+            top_idx += 7 * top.owner == NAMES[0]
 
-    return shifted
+            coord = (y - min_y) * 26 + (x - min_x) + top_idx
+            data[coord] = 1
 
-
-tile_types = ["queen", "spider", "beetle", "grasshopper", "ant", "mosquito", "ladybug"]
+    return data
 
 
 def get_free_tiles(board: Board, name: str):
@@ -100,6 +107,8 @@ def select_move(board, player):
 
 
 def play(board, names: list):
+    used_board_states = []
+
     for i in range(MAX_MOVES):
         if i % 10 == 0:
             print("Step:", i)
@@ -108,19 +117,23 @@ def play(board, names: list):
 
         selected_move = select_move(board, player)
         board.move(player, selected_move)
-        
+
+        normalized_board = shift_to_00(board.tiles)
+        used_board_states.append(normalized_board)
+
         if board.finished():
+            print(board.winner, board.loser)
+            # train(used_board_states, positive=(board.winner == names[0]))
             return
 
 
 def main():
     board = Board()
 
-    names = ["CPU1", "CPU2"]
-    for name in names:
+    for name in NAMES:
         board.add_player(UserModel(name, ""))
 
-    play(board, names)
+    play(board, NAMES)
 
 
 if __name__ == "__main__":
