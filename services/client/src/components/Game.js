@@ -6,6 +6,8 @@ import socketIOClient from "socket.io-client";
 import Button from "@material-ui/core/Button";
 import Chat from "./Chat";
 import IconButton from "@material-ui/core/IconButton";
+import UserList from "./UserList";
+import {userService} from "./userService";
 
 // SocketIO data.
 // const ENDPOINT = "http://localhost:5000";
@@ -37,8 +39,7 @@ export default function Game() {
     let board = React.useRef(null);
     const [tileNames, setTileNames] = useState(initialTileNames);
 
-    const [cookies, setCookie, removeCookie] = useCookies(['username', 'room']);
-    const [username, setUsername] = useState("");
+    const [cookies, setCookie, removeCookie] = useCookies(['room']);
     const [room, setRoom] = useState("");
     const [isConnected, setIsConnected] = useState(false);
 
@@ -56,65 +57,109 @@ export default function Game() {
         setInterval(() => hexGrid.update(), 1000 / 60);
 
         // Check if the user has used the site previously
-        let un = cookies.username;
         let rm = cookies.room;
         if (rm !== undefined) {
             setRoom(rm);
-            setUsername(un);
-
-            connectGame(un, rm);
         }
     }, []);
 
     function buttonDisconnectGame() {
-        // TODO: Implement server leave button function
-        socket.emit("leave", {room: room});
+        let username = userService.getUser().name;
+        socket.emit("leave", {room: room, username: username});
+        setRoom("");
+        setIsConnected(false);
     }
 
     function buttonConnectGame() {
-        connectGame(username, room);
+        connectGame(room);
     }
 
-    function connectGame(username, room) {
-        if (room === "" || username === "") {
+    function connectGame(room) {
+        if (room === "") {
             return;
         }
 
-        setCookie("username", username, {sameSite: "strict"});
         setCookie("room", room, {sameSite: "strict"});
+
+        let username = userService.getUser().name;
+        hexGrid.username = username;
 
         // Setup socket event listeners and join the selected room.
         socket.emit("join", {
-            room: room,
-            username: username
+            room: room
+        });
+
+        socket.on("userList", (response) => {
+            if (response.length > 0)
+                hexGrid.player1 = response[0].name;
+            if (response.length > 1)
+                hexGrid.player2 = response[1].name;
         });
 
         socket.on("boardState", (rawResponse) => {
             let response = JSON.parse(rawResponse);
-            hexGrid.setBoardState(response, username);
+            hexGrid.setBoardState(response);
+        });
+
+        socket.on("tileAmounts", (response) => {
+            setTileNames(response);
+        });
+
+        socket.on("finished", (response) => {
+            if (response.winner === username) {
+                hexGrid.audio_files["success"].currentTime = 0.0;
+                hexGrid.audio_files["success"].play();
+            } else if (response.loser === username) {
+                hexGrid.audio_files["incorrect"].currentTime = 0.0;
+                hexGrid.audio_files["incorrect"].play();
+            }
         });
 
         socket.on("placeTile", (response) => {
+            hexGrid.audio_files["tile_sound_2"].currentTime = 0.0;
+            hexGrid.audio_files["tile_sound_2"].play();
+
+            hexGrid.markedTiles = [];
             let data = response.data;
 
             // Create a tile on desired position
             let tile;
-            if (response.username === username) {
+            // Either it is player1, or you are playing, and it is your tile.
+
+            if (response.username === hexGrid.player1) {
                 // Place my tile
                 tile = hexGrid.makeTile(data.image, data.x, data.y, hexGrid.tileClickHandler);
-                tile.mine = true;
-                // Remove tile from cursor.
-                hexGrid.selection = null;
+                tile.owner = response.username;
+                tile.z = data.z;
+                tile.mine = response.username === username;
             } else {
                 // Place opponents tile.
-                tile = hexGrid.makeTile(data.image, data.x, data.y, null);
-                tile.mine = false;
-                // Remove the hover mouse state.
-                hexGrid.enemyMouseState.pos = null;
+                tile = hexGrid.makeTile(data.image, data.x, data.y, hexGrid.tileClickHandler);
+                tile.z = data.z;
+                tile.owner = response.username;
+                tile.mine = response.username === username;
             }
+
+            // Send information when you are one of the players.
+            if (response.username === username) {
+                // Remove tile from cursor.
+                hexGrid.selection = null;
+
+                // Notify other users that tile hover is no longer necessary to render.
+                socket.emit("mouseHover", {
+                    room: room,
+                    username: username,
+                    data: undefined
+                })
+            }
+
             hexGrid.putTile(tile, data.x, data.y);
-            hexGrid.audio_files["tile_sound_2"].currentTime = 0.0;
-            hexGrid.audio_files["tile_sound_2"].play();
+
+
+        });
+
+        socket.on("markedTiles", (rawResponse) => {
+            hexGrid.markedTiles = JSON.parse(rawResponse);
         });
 
         hexGrid.onTilePlaceHandler = (tile) => {
@@ -126,6 +171,9 @@ export default function Game() {
         };
 
         socket.on("pickupTile", (response) => {
+            hexGrid.audio_files["tile_sound_2"].currentTime = 0.0;
+            hexGrid.audio_files["tile_sound_2"].play();
+
             let data = response.data;
 
             if (response.username === username) {
@@ -146,9 +194,19 @@ export default function Game() {
             });
         };
 
-        socket.on("mouseHover", (data) => {
+        socket.on("mouseHover", (response) => {
             // Remotely sent tiles are never your own.
-            hexGrid.setEnemyHover(data);
+            // For the players themselves, always show as enemy hover.
+            if (hexGrid.player1 === username || hexGrid.player2 === username) {
+                hexGrid.setEnemyHover(response.data);
+                return
+            }
+            // Spectators can see both colours.
+            if (response.username === hexGrid.player2) {
+                hexGrid.setEnemyHover(response.data);
+            } else if (response.username === hexGrid.player1) {
+                hexGrid.setHover(response.data);
+            }
         });
 
         setInterval(() => {
@@ -172,20 +230,30 @@ export default function Game() {
             )
         }, 1000 / 30);
 
+        setInterval(() => { socket.emit("getBoard", {room: room}); }, 1000/30);
+
         setIsConnected(true);
     }
 
+    function unselect() {
+        setTileNames([...tileNames].map(object => {
+            let amount = object.amount;
+
+            if (object.name === hexGrid.selection.image) amount += 1;
+
+            return {
+                ...object,
+                amount: amount
+            };
+        }));
+
+        hexGrid.selection = null;
+    }
+
     return <div className={"content-wrapper"}>
-        <div id={"left-menu-column"}>
+        <div className={"left-menu-column"}>
             <div className={"column-data"}>
                 {isConnected ? "Connected" : "Disconnected"}
-                <TextField
-                    name={"username"}
-                    variant={"outlined"}
-                    label={"Username"}
-                    value={username}
-                    onChange={(event) => setUsername(event.target.value)}
-                />
                 <TextField
                     name={"room"}
                     variant={"outlined"}
@@ -197,50 +265,61 @@ export default function Game() {
                     : <Button onClick={buttonDisconnectGame} variant="contained">Disconnect</Button>
                 }
             </div>
+            <UserList data={{
+                socket: socket,
+                room: room
+            }}/>
             <Chat data={{
                 ...chatData,
-                user: username,
                 room: room
             }}/>
         </div>
-        <canvas ref={board} className={"canvas"} id={"canvas"}>
-        </canvas>
-        <div id={"tile-selection"}>
-            {
-                tileNames.map((tileSelection, i) => {
-                    let srcName = "static/images/" + tileSelection.name + ".png";
-                    return <div key={i}>
-                        <div>{tileSelection.amount} {tileSelection.name}{tileSelection.amount !== 1 ? "s" : ""} left.</div>
-                        <IconButton
-                            variant={"contained"}
-                            color={"primary"}
-                            disabled={!isConnected || tileSelection.amount === 0}
-                            onClick={
-                                () => {
-                                    let tileIncrementName = null;
-                                    if (hexGrid.selection !== null) {
-                                        tileIncrementName = hexGrid.selection.image;
+        <div className={"main-content-wrapper"}>
+            <div className={"canvas-wrapper"}>
+                <canvas ref={board} className={"canvas"} id={"canvas"}>
+                </canvas>
+                <a href={"https://www.ultraboardgames.com/hive/game-rules.php"} target="_blank">Rules</a>
+            </div>
+            <div id={"tile-selection"}
+                 onKeyDown={(ev) => {
+                     if (ev.key === "Escape") unselect();
+                 }}>
+                {
+                    tileNames.map((tileSelection, i) => {
+                        let srcName = "static/images/" + tileSelection.name + ".png";
+                        return <div key={i}>
+                            <IconButton
+                                variant={"contained"}
+                                color={"primary"}
+                                disabled={!isConnected || tileSelection.amount === 0}
+                                onClick={
+                                    () => {
+                                        let tileIncrementName = null;
+                                        if (hexGrid.selection !== null) {
+                                            tileIncrementName = hexGrid.selection.image;
+                                        }
+                                        hexGrid.select(tileSelection.name);
+                                        setTileNames([...tileNames].map(object => {
+                                            let amount = object.amount;
+
+                                            if (object.name === tileSelection.name) amount -= 1;
+
+                                            if (object.name === tileIncrementName) amount += 1;
+
+                                            return {
+                                                ...object,
+                                                amount: amount
+                                            };
+                                        }));
                                     }
-                                    hexGrid.select(tileSelection.name);
-                                    setTileNames([...tileNames].map(object => {
-                                        let amount = object.amount;
-
-                                        if (object.name === tileSelection.name) amount -= 1;
-
-                                        if (object.name === tileIncrementName) amount += 1;
-
-                                        return {
-                                            ...object,
-                                            amount: amount
-                                        };
-                                    }));
-                                }
-                            }>
-                            <img src={srcName} alt="my image" width={60} height={60}/>
-                        </IconButton>
-                    </div>
-                })
-            }
+                                }>
+                                <img src={srcName} alt="my image" width={60} height={60}/>
+                            </IconButton>
+                            <div>{tileSelection.amount} {tileSelection.name}{tileSelection.amount !== 1 ? "s" : ""} left.</div>
+                        </div>
+                    })
+                }
+            </div>
         </div>
     </div>
 }

@@ -3,13 +3,12 @@ import TextField from "@material-ui/core/TextField";
 import Button from "@material-ui/core/Button";
 
 
-
-
 export default function Chat(props) {
     const socket = props.data.socket;
     const room = props.data.room;
     const user = props.data.user;
 
+    let messagesEnd = React.useRef(null);
     const [messages, setMessages] = useState([]);
     const [message, setMessage] = useState("");
 
@@ -17,6 +16,8 @@ export default function Chat(props) {
         // Register event handlers.
         socket.on("chatMessage", (data) => {
             setMessages(messages => [...messages, data]);
+
+            messagesEnd.current.scrollIntoView({behavior: "smooth"});
         });
     }, []);
 
@@ -35,11 +36,14 @@ export default function Chat(props) {
         <div className={"chat-messages"}>
             {
                 messages.map((data, i) => {
-                    return <div key={i}>
+                    return <div key={i} className={"chat-message"}>
                         <b>{data.name}:</b> {data.message}
                     </div>
                 })
             }
+            <div style={{float: "left", clear: "both"}}
+                 ref={messagesEnd}>
+            </div>
         </div>
         <div className={"chat-bar"}>
             <TextField
@@ -47,6 +51,11 @@ export default function Chat(props) {
                 label={"Message"}
                 value={message}
                 onChange={(event) => setMessage(event.target.value)}
+                onKeyDown={(ev) => {
+                    if (ev.key === "Enter") {
+                        sendMessageButton();
+                    }
+                }}
             >
             </TextField>
             <Button

@@ -33,10 +33,13 @@ export function HexGrid() {
     // Visual parameters
     this.zoom = 1;
     this.hexSize = 50;
+    this.tileHeight = 15;
 
     this.offset = {x: 0, y: 0};
 
     this.boardState = {};
+    this.markedTiles = [];
+
     this.images = {};
     this.audio_files = {};
 
@@ -50,20 +53,32 @@ export function HexGrid() {
     this.onTilePickupHandler = null;
 
     this.selection = null;
+    this.player1 = null;
+    this.player2 = null;
+    this.username = null;
 
-    this.setBoardState = function(data, username) {
+    this.setBoardState = function(data) {
+        this.boardState = {};
         for (const [y, row] of Object.entries(data)) {
-            for (const [x, val] of Object.entries(row)) {
+            for (const [x, values] of Object.entries(row)) {
                 let tile;
-                if (val.owner === username) {
-                    tile = this.makeTile(val.type, x, y, this.tileClickHandler);
-                    tile.mine = true;
-                } else {
-                    tile = this.makeTile(val.type, x, y, null);
-                    tile.mine = false;
+
+                for (let val of values) {
+                    if (val.owner === this.username) {
+                        tile = this.makeTile(val.type, x, y, this.tileClickHandler);
+                        tile.mine = true;
+                        tile.owner = val.owner;
+                        tile.z = val.z;
+                    } else {
+                        tile = this.makeTile(val.type, x, y, null);
+                        tile.mine = false;
+                        tile.owner = val.owner;
+                        tile.z = val.z;
+                    }
+
+                    this.putTile(tile, x, y);
                 }
 
-                this.putTile(tile, x, y);
             }
         }
     };
@@ -121,6 +136,7 @@ export function HexGrid() {
         this.canvas.width = 1000;
         this.canvas.height = 800;
         this.context = this.canvas.getContext("2d");
+        this.context.translate(0.5, 0.5);
     };
 
     this.update = function() {
@@ -128,35 +144,30 @@ export function HexGrid() {
 
         // TODO: check performance of dictionary querying.
         for (const [y, row] of Object.entries(this.boardState)) {
-            for (const [x, val] of Object.entries(row)) {
-                let pos = this.getCanvasFromCoordinates(x, y);
-                this.drawTile(val, pos.x, pos.y);
+            for (const [x, values] of Object.entries(row)) {
+                for (let tile of values) {
+                    let pos = this.getCanvasFromCoordinates(x, y);
+                    this.drawTile(tile, pos.x, pos.y);
+                }
             }
         }
 
-        if (this.selection !== null) {
-            // Check if the tile has been placed on the board before.
-            if (this.selection.x !== null) {
-                // Mark available tiles
-                let neighbours = this.getNeighbours(new Point(this.selection.x, this.selection.y));
-                neighbours.forEach(neighbour => {
-                    let secondNeighbours = this.getNeighbours(neighbour);
-                    for (let secondNeighbour of secondNeighbours) {
-                        let tile = this.getTile(secondNeighbour.x, secondNeighbour.y);
-                        if (tile !== null && this.getTile(neighbour.x, neighbour.y) === null) {
-                            this.markAvailable(neighbour.x, neighbour.y);
-                            return;
-                        }
-                    }
-                });
-            }
+        // Draw available tiles
+        for (let entry of this.markedTiles) {
+            this.markAvailable(entry.x, entry.y, entry.z);
+        }
 
+        if (this.selection !== null) {
             // Always draw selected tile on top of everything.
             this.drawTile(this.selection, this.mouseState.pos.x, this.mouseState.pos.y);
         }
 
         if (this.enemyMouseState.pos !== null) {
             this.drawTile(this.enemyMouseState.tile, this.enemyMouseState.pos.x + this.offset.x, this.enemyMouseState.pos.y + this.offset.y)
+        }
+
+        if (this.mouseState.tile !== null) {
+            this.drawTile(this.mouseState.tile, this.mouseState.pos.x + this.offset.x, this.mouseState.pos.y + this.offset.y)
         }
     };
 
@@ -177,7 +188,7 @@ export function HexGrid() {
     };
 
     this.makeTile = function(image, x, y, onclickCallback) {
-        return {x: x, y: y, image: image, callback: onclickCallback, mine: true};
+        return {x: x, y: y, z: 0, image: image, callback: onclickCallback, mine: true};
     };
 
     this.enemyMouseState = {
@@ -186,8 +197,22 @@ export function HexGrid() {
     };
 
     this.setEnemyHover = function(data) {
-        this.enemyMouseState.pos = data.pos;
-        this.enemyMouseState.tile = data.tile;
+        if (data !== undefined) {
+            this.enemyMouseState.pos = data.pos;
+            this.enemyMouseState.tile = data.tile;
+        } else {
+            this.enemyMouseState.pos = null;
+        }
+    };
+
+    this.setHover = function(data) {
+        if (data !== undefined) {
+            this.mouseState.pos = data.pos;
+            this.mouseState.tile = data.tile;
+        } else {
+            this.mouseState.pos = null;
+            this.mouseState.tile = null;
+        }
     };
 
     this.addObject = function(image, x, y, onclickCallback) {
@@ -199,11 +224,13 @@ export function HexGrid() {
         prev: null,
         click: false,
         mouseDownPoint: null,
-        pos: null
+        pos: null,
+        tile: null
     };
 
     this.select = function(name) {
         this.selection = this.makeTile(name, null, null, this.tileClickHandler);
+        this.selection.owner = this.username;
     };
 
     this.setPrev = function(ev) {
@@ -222,7 +249,12 @@ export function HexGrid() {
         this.offset.y += pt2.y - pt1.y;
     };
 
+    this.isPlayer = function() {
+        return this.username === this.player1 || this.username === this.player2;
+    };
+
     this.handleMouseDown = function(ev) {
+        if (!this.isPlayer()) return;
         if (!isInCanvas(this.canvas, ev)) return;
 
         let pt = {
@@ -238,6 +270,8 @@ export function HexGrid() {
     };
 
     this.handleMouseMove = function(ev) {
+        if (!this.isPlayer()) return;
+
         this.setPos(ev);
 
         if (!this.mouseState.click) return;
@@ -250,23 +284,28 @@ export function HexGrid() {
     };
 
     this.getTile = function(x, y) {
-        if (this.boardState[y] !== undefined && this.boardState[y][x] !== undefined) {
-            return this.boardState[y][x];
+        if (this.boardState[y] !== undefined &&
+            this.boardState[y][x] !== undefined &&
+            this.boardState[y][x].length > 0)
+        {
+            return this.boardState[y][x][this.boardState[y][x].length - 1];
         }
         return null;
     };
 
     this.removeTile = function(x, y) {
         if (this.boardState[y] !== undefined && this.boardState[y][x] !== undefined) {
-            delete this.boardState[y][x];
+            this.boardState[y][x].pop();
         }
     };
 
     this.putTile = function(tile, x, y) {
         if (this.boardState[y] === undefined) this.boardState[y] = {};
+        if (this.boardState[y][x] === undefined) this.boardState[y][x] = [];
         tile.x = x;
         tile.y = y;
-        this.boardState[y][x] = tile;
+        tile.z = this.boardState[y][x].length;
+        this.boardState[y][x].push(tile);
     };
 
     this.tileClickHandler = function(self, ev, tile) {
@@ -312,31 +351,33 @@ export function HexGrid() {
         };
     };
 
-    this.setTileStyle = function() {
+    this.setP1TileStyle = function() {
         this.context.strokeStyle = this.tileEdgeColour;
         this.context.lineJoin = "round";
         this.context.lineWidth = "4";
         this.context.fillStyle = this.tileColour;
     };
 
-    this.setRemoteTileStyle = function() {
+    this.setP2TileStyle = function() {
         this.context.strokeStyle = this.remoteTileEdgeColour;
         this.context.lineJoin = "round";
         this.context.lineWidth = "4";
         this.context.fillStyle = this.remoteTileColour;
     };
 
-    this.markAvailable = function(x, y) {
+    this.markAvailable = function(x, y, z) {
         let pt = this.getCanvasFromCoordinates(x, y);
 
-        this.setTileStyle();
+        this.setP1TileStyle();
         this.context.beginPath();
-        this.context.arc(pt.x, pt.y, this.hexSize / 2, 0, Math.PI * 2);
+        this.context.arc(pt.x, pt.y - (z * this.tileHeight), this.hexSize / 2, 0, Math.PI * 2);
         this.context.stroke();
         this.context.fill();
     };
 
     this.handleMouseUp = function(ev) {
+        if (!this.isPlayer()) return;
+
         if (this.mouseState.mouseDownPoint === null) return;
 
         this.mouseState.prev = null;
@@ -345,26 +386,20 @@ export function HexGrid() {
         if (euclideanDistance(ev, this.mouseState.mouseDownPoint) < 10) {
             // Register this as a click instead of a drag.
             let point = this.getClosestHexagon(ev);
-
             if (this.selection === null) {
                 // If no tile is yet selected, select the currently hovering tile.
                 let tile = this.getTile(point.x, point.y);
-                if (tile !== null) {
+                if (tile !== null && tile.mine) {
                     tile.callback(this, ev, tile);
-                    this.audio_files["tile_sound_2"].currentTime = 0.0;
-                    this.audio_files["tile_sound_2"].play();
                     this.onTilePickupHandler(tile);
                 }
             } else {
                 // Try to deselect currently selected tile and place on hovering tile.
-                let tile = this.getTile(point.x, point.y);
-                if (tile === null) {
-                    this.selection.new_x = point.x;
-                    this.selection.new_y = point.y;
-                    // Cannot place immediately, because server needs to validate position is valid first.
-                    // this.putTile(this.selection, point.x, point.y);
-                    this.onTilePlaceHandler(this.selection);
-                }
+                this.selection.new_x = point.x;
+                this.selection.new_y = point.y;
+                // Cannot place immediately, because server needs to validate position is valid first.
+                // this.putTile(this.selection, point.x, point.y);
+                this.onTilePlaceHandler(this.selection);
             }
         }
     };
@@ -375,39 +410,39 @@ export function HexGrid() {
         let xStart = x - xIncrement;
         let yStart = y - this.hexSize / 2;
 
-        let tileThickness = 15;
+        let tileThickness = this.tileHeight;
 
-        if (tile.mine)
-            this.setTileStyle();
+        if (tile.owner === this.player1)
+            this.setP1TileStyle();
         else
-            this.setRemoteTileStyle();
+            this.setP2TileStyle();
 
         this.context.beginPath();
-        this.context.moveTo(xStart, yStart - tileThickness);
-        this.context.lineTo(xStart + xIncrement, yStart - 0.5 * this.hexSize - tileThickness);
-        this.context.lineTo(xStart + 2 * xIncrement, yStart - tileThickness);
-        this.context.lineTo(xStart + 2 * xIncrement, yStart + this.hexSize - tileThickness);
-        this.context.lineTo(xStart + xIncrement, yStart + 1.5 * this.hexSize - tileThickness);
-        this.context.lineTo(xStart, yStart + this.hexSize - tileThickness);
+        this.context.moveTo(xStart, yStart - tileThickness * (tile.z + 1));
+        this.context.lineTo(xStart + xIncrement, yStart - 0.5 * this.hexSize - tileThickness * (tile.z + 1));
+        this.context.lineTo(xStart + 2 * xIncrement, yStart - tileThickness * (tile.z + 1));
+        this.context.lineTo(xStart + 2 * xIncrement, yStart + this.hexSize - tileThickness * (tile.z + 1));
+        this.context.lineTo(xStart + xIncrement, yStart + 1.5 * this.hexSize - tileThickness * (tile.z + 1));
+        this.context.lineTo(xStart, yStart + this.hexSize - tileThickness * (tile.z + 1));
         this.context.closePath();
         this.context.stroke();
         this.context.fill();
 
         // 3d effect.
         this.context.beginPath();
-        this.context.moveTo(xStart + 2 * xIncrement, yStart + this.hexSize - tileThickness);
-        this.context.lineTo(xStart + 2 * xIncrement, yStart + this.hexSize);
-        this.context.lineTo(xStart + xIncrement, yStart + 1.5 * this.hexSize);
-        this.context.lineTo(xStart, yStart + this.hexSize);
-        this.context.lineTo(xStart, yStart + this.hexSize - tileThickness);
-        this.context.lineTo(xStart + xIncrement, yStart + 1.5 * this.hexSize - tileThickness);
+        this.context.moveTo(xStart + 2 * xIncrement, yStart + this.hexSize - tileThickness * (tile.z + 1));
+        this.context.lineTo(xStart + 2 * xIncrement, yStart + this.hexSize - tileThickness * tile.z);
+        this.context.lineTo(xStart + xIncrement, yStart + 1.5 * this.hexSize - tileThickness * tile.z);
+        this.context.lineTo(xStart, yStart + this.hexSize - tileThickness * tile.z);
+        this.context.lineTo(xStart, yStart + this.hexSize - tileThickness * (tile.z + 1));
+        this.context.lineTo(xStart + xIncrement, yStart + 1.5 * this.hexSize - tileThickness * (tile.z + 1));
         this.context.closePath();
         this.context.stroke();
         this.context.fill();
 
         let s = this.hexSize / 2;
         this.context.drawImage(this.images[tile.image],
-            x - s, y - s - tileThickness, this.hexSize, this.hexSize);
+            x - s, y - s - tileThickness * (tile.z + 1), this.hexSize, this.hexSize);
     };
 
     this.getNeighbours = function(point) {
@@ -442,9 +477,9 @@ export function HexGrid() {
             this.images[tileName.name] = img;
         });
 
-        let audioNames = ["tile_sound_1", "tile_sound_2"];
+        let audioNames = ["tile_sound_1", "tile_sound_2", "success", "incorrect"];
         audioNames.forEach((name) => {
-            this.audio_files[name] = new Audio("static/audio/" + name + ".wav");
+            this.audio_files[name] = new Audio("static/audio/" + name + ".mp3");
         })
     }
 }

@@ -15,3 +15,6 @@ def json_api():
         return decorated_function
 
     return decorator
+
+
+import project.api.user  # noqa
