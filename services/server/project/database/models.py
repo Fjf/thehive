@@ -19,9 +19,10 @@ class UserModel(OrmModelBase):
 
     elo = Column(Float(), unique=False, default=1200)
 
-    def __init__(self, name: str, password: str):
+    def __init__(self, name: str, password: str = None):
         self.name = name
-        self.password = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+        if password is not None:
+            self.password = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
 
     def check_password(self, password):
         return bcrypt.checkpw(password.encode(), self.password)
@@ -32,4 +33,3 @@ class UserModel(OrmModelBase):
             "name": self.name,
             "elo": self.elo
         }
-

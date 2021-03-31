@@ -1,9 +1,9 @@
 import configparser
 import os
 import sys
-import socketio
 
 from flask import Flask
+from flask_cors import CORS
 from flask_socketio import SocketIO
 
 global app
@@ -30,7 +30,7 @@ def write_config_sample():
     config = configparser.ConfigParser()
     config["app"] = {}
     config["app"]["host"] = "0.0.0.0"
-    config["app"]["port"] = "5000"
+    config["app"]["port"] = "5001"
     config["app"]["debug"] = "true"
     config["app"]["secret"] = str(os.urandom(24))
     config["database"]["url"] = "sqlite:///storage/database.db"
@@ -53,6 +53,8 @@ def init():
 
     app = create_app(config_parser)
     sio = SocketIO(app, async_mode='gevent')
+
+    CORS(app)
 
     # Setup blueprints
     from project.api import api

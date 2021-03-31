@@ -18,6 +18,8 @@ class Tile:
     def __init__(self, x, y):
         self.x = x
         self.y = y
+        self.original_x = None
+        self.original_y = None
         self.z = 0
         self.owner = None
         self.type = "unknown"
@@ -93,6 +95,25 @@ def _make_tiles_around(tile: Tile):
 
 
 def get_direction(position, tile):
+    if position.y == tile.y and position.x == tile.x - 1:
+        return Directions.LEFT
+    if position.y == tile.y and position.x == tile.x + 1:
+        return Directions.RIGHT
+    if (position.y % 2 == 0 and position.x - 1 == tile.x and position.y - 1 == tile.y) \
+            or (position.x == tile.x and position.y - 1 == tile.y):
+        return Directions.TOP_LEFT
+    if (position.y % 2 == 0 and position.x == tile.x and position.y - 1 == tile.y) \
+            or (position.x + 1 == tile.x and position.y - 1 == tile.y):
+        return Directions.TOP_RIGHT
+    if (position.y % 2 == 0 and position.x - 1 == tile.x and position.y + 1 == tile.y) \
+            or (position.x == tile.x and position.y + 1 == tile.y):
+        return Directions.BOTTOM_LEFT
+    if (position.y % 2 == 0 and position.x == tile.x and position.y + 1 == tile.y) \
+            or (position.x + 1 == tile.x and position.y + 1 == tile.y):
+        return Directions.BOTTOM_RIGHT
+
+
+def slow_get_direction(position, tile):
     if _make_top_left(position) == tile:
         return Directions.TOP_LEFT
     if _make_top_right(position) == tile:
@@ -106,6 +127,7 @@ def get_direction(position, tile):
     if position.y == tile.y and position.x == tile.x + 1:
         return Directions.RIGHT
     return None
+
 
 
 class Board:
@@ -365,6 +387,8 @@ class Board:
             # Create area of tiles
             for check in checks:
                 for tile in _make_tiles_around(check):
+                    if tile not in subset:
+                        continue
                     if self.get_tile(tile.x, tile.y) is None \
                             and self.check_physically_allowed(check, tile):
                         area.add(tile)
@@ -373,7 +397,7 @@ class Board:
 
         result = area - prev_area
 
-        return result.intersection(subset)
+        return result
 
     def _get_valid_ladybug_moves(self, original_tile, subset):
         result = set()
@@ -404,25 +428,28 @@ class Board:
         :param subset:
         :return:
         """
-        checks = [original_tile]
+        frontier = [original_tile]
 
         result = set()
-        prev_result = None
-        while prev_result != result:
+        while True:
             area = set()
             # Create area of tiles
-            for check in checks:
+            for check in frontier:
                 for tile in _make_tiles_around(check):
+                    if tile not in subset:
+                        continue
                     if self.get_tile(tile.x, tile.y) is None \
                             and self.check_physically_allowed(check, tile):
                         area.add(tile)
 
-            checks = [a for a in area]
+            frontier = area.copy()
 
-            prev_result = result.copy()
-            result = result.union(area).intersection(subset)
+            temp_result = result.union(area)
+            if temp_result == result:
+                return temp_result
 
-        return result.intersection(subset)
+            result = temp_result
+
 
     def fix_height(self, tiles: set):
         for tile in tiles:
@@ -431,9 +458,11 @@ class Board:
                 tile.z = board_tile.z + 1
 
     def get_tile(self, x: int, y: int) -> Optional[Tile]:
-        if y in self.tiles and x in self.tiles[y] and len(self.tiles[y][x]) > 0:
-            return self.tiles[y][x][len(self.tiles[y][x]) - 1]
-        return None
+        try:
+            temp = self.tiles[y][x]
+            return temp[len(temp) - 1]
+        except (IndexError, KeyError) as e:
+            return None
 
     def put_tile(self, tile):
         if tile.y not in self.tiles:
@@ -482,8 +511,8 @@ class Board:
             # If this is a new tile, subtract the tile from the amounts
             if original_tile is None:
                 player.pieces[tile.type] -= 1
-            player.turn += 1
 
+            player.turn += 1
             self.next_turn()
             return True
 
@@ -601,25 +630,27 @@ class Board:
         if direction is None:
             raise ValueError("Cannot check when tiles are more than 1 space apart.")
 
-        tl = self._get_top_left(position) is None
         tr = self._get_top_right(position) is None
-        bl = self._get_bottom_left(position) is None
-        br = self._get_bottom_right(position) is None
         left = self.get_tile(position.x - 1, position.y) is None
-        right = self.get_tile(position.x + 1, position.y) is None
-
         if direction == Directions.TOP_LEFT:
             return tr or left
-        if direction == Directions.TOP_RIGHT:
-            return tl or right
+
+        br = self._get_bottom_right(position) is None
         if direction == Directions.BOTTOM_LEFT:
             return br or left
-        if direction == Directions.BOTTOM_RIGHT:
-            return bl or right
-        if direction == Directions.LEFT:
-            return tl or bl
         if direction == Directions.RIGHT:
             return tr or br
+
+        tl = self._get_top_left(position) is None
+        bl = self._get_bottom_left(position) is None
+        if direction == Directions.LEFT:
+            return tl or bl
+
+        right = self.get_tile(position.x + 1, position.y) is None
+        if direction == Directions.TOP_RIGHT:
+            return tl or right
+        if direction == Directions.BOTTOM_RIGHT:
+            return bl or right
 
     def reset_game(self):
         self.tiles = {}

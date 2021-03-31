@@ -1,4 +1,4 @@
-const apiUrl = "http://192.168.0.227:5000/api";
+const apiUrl = "/api";
 
 export const userService = {
     login,

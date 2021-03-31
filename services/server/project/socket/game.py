@@ -10,7 +10,6 @@ from project.database.models import UserModel
 from project.game.Board import Board
 from project.manage import sio
 from project.session import session_user
-from services.cpu_training.test import select_move
 
 games = defaultdict(Board)
 
@@ -68,10 +67,6 @@ def on_join(data):
     if game.get_player(username) is None:
         # Adds the current player to the room as either spectator or player depending on if they are quick enough.
         player_type = game.add_player(user)
-
-        if "CPU" in room:
-            game.add_player(UserModel("CPU1", ""))
-
         system_chat("%s has joined as %s" % (user.name, player_type), room=room)
 
     # Update everybody's player and spectator list.
@@ -188,8 +183,9 @@ def on_place_tile(request):
 
 
 def do_cpu_move(game, cpu, room):
-    move = select_move(game, cpu)
-    game.move(cpu, move)
+    # move = select_move(game, cpu)
+    # game.move(cpu, move)
+    pass
 
 
 @sio.on("pickupTile")

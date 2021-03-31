@@ -24,3 +24,6 @@ zope.interface==5.1.0
 sqlalchemy
 mysql-connector-python
 numpy
+torch
+bcrypt
+flask-cors
