@@ -71,6 +71,9 @@ export default function Game() {
     }
 
     function buttonConnectGame() {
+        // Reconnect socket to ensure correct login is used.
+        socket.disconnect();
+        socket.connect();
         connectGame(room);
     }
 
@@ -84,7 +87,7 @@ export default function Game() {
         let username = userService.getUser().name;
         hexGrid.username = username;
 
-        // Setup socket event listeners and join the selected room.
+        // Setup game_socket event listeners and join the selected room.
         socket.emit("join", {
             room: room
         });
@@ -236,6 +239,8 @@ export default function Game() {
     }
 
     function unselect() {
+        if (hexGrid.selection === null) return;
+
         setTileNames([...tileNames].map(object => {
             let amount = object.amount;
 
@@ -250,7 +255,13 @@ export default function Game() {
         hexGrid.selection = null;
     }
 
-    return <div className={"content-wrapper"}>
+    return <div
+        className={"content-wrapper"}
+        tabIndex={"0"}
+        onKeyDown={(ev) => {
+            console.log(ev.key);
+            if (ev.key === "Escape") unselect();
+        }}>
         <div className={"left-menu-column"}>
             <div className={"column-data"}>
                 {isConnected ? "Connected" : "Disconnected"}
@@ -280,10 +291,7 @@ export default function Game() {
                 </canvas>
                 <a href={"https://www.ultraboardgames.com/hive/game-rules.php"} target="_blank">Rules</a>
             </div>
-            <div id={"tile-selection"}
-                 onKeyDown={(ev) => {
-                     if (ev.key === "Escape") unselect();
-                 }}>
+            <div id={"tile-selection"}>
                 {
                     tileNames.map((tileSelection, i) => {
                         let srcName = "static/images/" + tileSelection.name + ".png";

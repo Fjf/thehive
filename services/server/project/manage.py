@@ -52,7 +52,7 @@ def init():
         sys.exit(1)
 
     app = create_app(config_parser)
-    sio = SocketIO(app, async_mode='gevent')
+    sio = SocketIO(app, async_mode='gevent', manage_session=True)
 
     CORS(app)
 
@@ -62,7 +62,7 @@ def init():
 
     # Setup routes
     import project.views.index  # noqa
-    import project.socket  # noqa
+    import project.game_socket  # noqa
 
     import project.database.models
 

@@ -55,6 +55,8 @@ def on_join(data):
     if user is None:
         return
 
+    print(user.name, user.id)
+
     room = data.get("room")
     join_room(room)
 

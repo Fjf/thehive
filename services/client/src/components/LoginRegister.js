@@ -35,7 +35,7 @@ export default function LoginRegister(props) {
         if (username === "" || password === "")
             return;
 
-        setCookie("loginData", loginData);
+        setCookie("loginData", loginData, {sameSite: "strict"});
 
         userService.registerUser(username, password).then(r => {
             props.history.push("/game");

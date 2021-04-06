@@ -38,7 +38,11 @@ def register():
     db.add(user)
     db.commit()
 
+    # Re-fetch from database to update ID
+    user = user_service.get_user(name=username)
     session_user_set(user)
+
+    print(user.name, user.id)
     return user.to_json()
 
 

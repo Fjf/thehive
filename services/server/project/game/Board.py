@@ -376,7 +376,8 @@ class Board:
         return result
 
     def _get_valid_spider_moves(self, original_tile, subset):
-        checks = [original_tile]
+        checks = set()
+        checks.add(original_tile)
 
         prev_area = set()
         area = set()
@@ -385,7 +386,7 @@ class Board:
             area = set()
 
             # Create area of tiles
-            for check in checks:
+            for check in list(checks):
                 for tile in _make_tiles_around(check):
                     if tile not in subset:
                         continue
@@ -393,7 +394,7 @@ class Board:
                             and self.check_physically_allowed(check, tile):
                         area.add(tile)
 
-            checks = [a for a in area]
+            checks = area.union(checks)
 
         result = area - prev_area
 

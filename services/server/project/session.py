@@ -1,7 +1,5 @@
 from typing import Optional
 
-from flask import session
-
 from flask import session, g as flaskg
 
 from project.database import user_service
@@ -14,8 +12,8 @@ def session_user() -> UserModel:
     :return: the currently authenticated user.
     :raises: ValueError if no user is logged in.
     """
-
     user_id = session['user_id'] if 'user_id' in session else None
+    print(user_id)
     if user_id is not None:
         if not hasattr(flaskg, 'session_user'):
             flaskg.session_user = user_service.get_user(uid=user_id)
@@ -37,4 +35,5 @@ def session_user_set(user: Optional[UserModel]):
     if user is None:
         del session['user_id']
     else:
+        print("Setting ses uid to", user.id)
         session['user_id'] = user.id

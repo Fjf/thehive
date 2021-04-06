@@ -43,6 +43,7 @@ function login(username, password) {
     return fetch(`${apiUrl}/users/login`, requestOptions)
         .then(handleResponse)
         .then(user => {
+            console.log(user);
             // login successful if there's a user in the response
             if (user) {
                 localStorage.setItem('user', JSON.stringify(user));
