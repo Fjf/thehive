@@ -211,7 +211,7 @@ def on_pickup_tile(request):
         return
 
     # Send available tiles
-    markings = json.dumps(list(game.export_valid_moves(x, y, user)), cls=ObjectEncoder)
+    markings = json.dumps(game.export_valid_moves(x, y, user), cls=ObjectEncoder)
     emit("markedTiles", markings, json=True, include_self=True)
     emit("pickupTile", request, json=True, room=room, include_self=True)
 

@@ -109,6 +109,9 @@ class Move(Structure):
         ('location', c_int),
     ]
 
+    def __repr__(self):
+        return "%d (%d) -> (%d)" % (self.tile, self.previous_location, self.location)
+
 
 #
 # The PlayerArguments structure is used to specify to MCTS or Minimax what parameters to use in the search.
@@ -282,21 +285,33 @@ class Hive:
         :param y:
         :return:
         """
-        tile = self.node.contents.board.contents.tiles[y * board_size + x]
+        tile = self.node.contents.board.contents.tiles[y][x]
         if tile.type == 0:
             return False
         return tile.free
 
     def export_valid_moves(self, x, y, user):
-        if not self.can_move(x, y):
-            return False
+        """
+        Returns a list of all x,y coordinates the tile at x,y can move to.
+        If this tile cannot be moved, this function returns an empty list.
 
-        tile = self.node.contents.board.contents.tiles[y * board_size + x]
+        :param x:
+        :param y:
+        :param user:
+        :return:
+        """
+        if not self.can_move(x, y):
+            return []
+
+        tile = self.node.contents.board.contents.tiles[y][x]
         white = tile & COLOR_MASK == PLAYER_WHITE
         # Check if this tile is a white tile, and the player is player black, or vice versa
         if white and user == self.players[1] or not white and user == self.players[0]:
             # You cannot move a tile which is not your color
-            return False
+            return []
+
+        for child in self.children():
+            print(child.move)
 
     def is_turn(self, user):
         """
@@ -306,3 +321,22 @@ class Hive:
         """
         to_move = self.node.contents.board.contents.turn % 2
         return self.players[to_move] == user
+
+
+
+h = Hive()
+p1 = UserModel(0, "Test")
+p2 = UserModel(0, "Test2")
+h.add_user(p1)
+h.add_user(p2)
+
+for i in range(10):
+    h.generate_moves()
+    h.select_child(random.randint(0, h.n_children() - 1))
+
+prev = h.node.contents.move.location
+h.print()
+print(prev % board_size, prev // board_size)
+h.export_valid_moves(prev % board_size, prev // board_size, p1)
+
+exit(1)
