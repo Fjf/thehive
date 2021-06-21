@@ -6,6 +6,8 @@ from flask import Flask
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
+from project.bot import Bot
+
 global app
 global sio
 
@@ -33,6 +35,7 @@ def write_config_sample():
     config["app"]["port"] = "5001"
     config["app"]["debug"] = "true"
     config["app"]["secret"] = str(os.urandom(24))
+    config["database"] = {}
     config["database"]["url"] = "sqlite:///storage/database.db"
 
     with open("config.ini", "w+") as f:
@@ -74,6 +77,13 @@ def init():
 
     # Create model
     project.database.metadata_create_all()
+
+    # Start ai move handler thread
+    app.bot = Bot(app)
+    app.bot.start()
+
+    # Games holder
+    app.games = {}
 
     print("Done initializing.")
 

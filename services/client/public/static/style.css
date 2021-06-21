@@ -91,7 +91,7 @@ html {
 }
 
 .chat-wrapper {
-    overflow-y: auto;
+    overflow-y: scroll;
 
     flex: 2 2 auto;
     display: flex;
@@ -107,7 +107,7 @@ html {
 
 .chat-messages {
     overflow-y: auto;
-
+    height: 800px;
     flex: 10 10 auto;
     display: flex;
     flex-direction: column;

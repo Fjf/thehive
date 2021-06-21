@@ -29,9 +29,7 @@ const initialTileNames = [
     new TileSelection("spider", 2),
     new TileSelection("beetle", 2),
     new TileSelection("grasshopper", 3),
-    new TileSelection("ant", 3),
-    new TileSelection("mosquito", 1),
-    new TileSelection("ladybug", 1)
+    new TileSelection("ant", 3)
 ];
 
 
@@ -122,24 +120,6 @@ export default function Game() {
             hexGrid.markedTiles = [];
             let data = response.data;
 
-            // Create a tile on desired position
-            let tile;
-            // Either it is player1, or you are playing, and it is your tile.
-
-            if (response.username === hexGrid.player1) {
-                // Place my tile
-                tile = hexGrid.makeTile(data.image, data.x, data.y, hexGrid.tileClickHandler);
-                tile.owner = response.username;
-                tile.z = data.z;
-                tile.mine = response.username === username;
-            } else {
-                // Place opponents tile.
-                tile = hexGrid.makeTile(data.image, data.x, data.y, hexGrid.tileClickHandler);
-                tile.z = data.z;
-                tile.owner = response.username;
-                tile.mine = response.username === username;
-            }
-
             // Send information when you are one of the players.
             if (response.username === username) {
                 // Remove tile from cursor.
@@ -152,10 +132,6 @@ export default function Game() {
                     data: undefined
                 })
             }
-
-            hexGrid.putTile(tile, data.x, data.y);
-
-
         });
 
         socket.on("markedTiles", (rawResponse) => {

@@ -60,25 +60,17 @@ export function HexGrid() {
     this.setBoardState = function(data) {
         this.boardState = {};
         for (const [y, row] of Object.entries(data)) {
-            for (const [x, values] of Object.entries(row)) {
+            for (const [x, entry] of Object.entries(row)) {
                 let tile;
 
-                for (let val of values) {
-                    if (val.owner === this.username) {
-                        tile = this.makeTile(val.type, x, y, this.tileClickHandler);
-                        tile.mine = true;
-                        tile.owner = val.owner;
-                        tile.z = val.z;
-                    } else {
-                        tile = this.makeTile(val.type, x, y, null);
-                        tile.mine = false;
-                        tile.owner = val.owner;
-                        tile.z = val.z;
-                    }
+                if (entry.image === null) continue;
 
-                    this.putTile(tile, x, y);
-                }
+                tile = this.makeTile(entry.image, x, y, this.tileClickHandler);
+                tile.number = entry.number;
+                tile.color = entry.color;
+                tile.z = 0;
 
+                this.putTile(tile, x, y);
             }
         }
     };
@@ -154,7 +146,7 @@ export function HexGrid() {
 
         // Draw available tiles
         for (let entry of this.markedTiles) {
-            this.markAvailable(entry.x, entry.y, entry.z);
+            this.markAvailable(entry[0], entry[1], 0);
         }
 
         if (this.selection !== null) {
@@ -175,7 +167,7 @@ export function HexGrid() {
         let xIncrement = this.hexSize * 0.866025;  // (sqrt(3) / 2)
         let yIncrement = this.hexSize * 1.5;
 
-        let xBump = mod(y, 2) * xIncrement;
+        let xBump = -(y * xIncrement);
         return {
             x: xBump + x * (xIncrement * 2) + this.offset.x,
             y: y * yIncrement + this.offset.y + this.hexSize / 2
@@ -320,8 +312,12 @@ export function HexGrid() {
 
         let cvs = getCanvasMouseCoordinates(this.canvas, ev);
 
+        // var xBump = -(y * xIncrement);
+        // return {
+        //     x: xBump + x * (xIncrement * 2) + this.offset.x,
+        //     y: y * yIncrement + this.offset.y + this.hexSize / 2
         let yCenter = Math.round((cvs.y - this.offset.y - this.hexSize) / yIncrement);
-        let xCenter = Math.round((cvs.x - this.offset.x - mod(yCenter, 2) * xIncrement) / (xIncrement * 2));
+        let xCenter = Math.round((cvs.x - this.offset.x + (yCenter * xIncrement)) / (xIncrement * 2));
         // y: y * yIncrement + this.offset.y + this.hexSize / 2
         // Check of the two upper neighbours, and this point, which center point is the closest.
         let points = this.getSurroundingArea(new Point(xCenter, yCenter));
@@ -344,7 +340,7 @@ export function HexGrid() {
 
         // Doing +0.5 then Math.floor makes sure we never get -0.
         let y = Math.floor((closest.y - this.offset.y) / yIncrement + 0.5);
-        let x = Math.floor((closest.x - this.offset.x - mod(y, 2) * xIncrement) / (xIncrement * 2) + 0.5);
+        let x = Math.floor((closest.x - this.offset.x + y * xIncrement) / (xIncrement * 2) + 0.5);
         return {
             x: x,
             y: y
@@ -412,7 +408,7 @@ export function HexGrid() {
 
         let tileThickness = this.tileHeight;
 
-        if (tile.owner === this.player1)
+        if (tile.color === 0)
             this.setP1TileStyle();
         else
             this.setP2TileStyle();
@@ -456,9 +452,8 @@ export function HexGrid() {
         points.push(new Point(point.x, point.y + 1));
 
         // The other top and bottom
-        let bump = mod(point.y, 2) * 2 - 1;
-        points.push(new Point(point.x + bump, point.y - 1));
-        points.push(new Point(point.x + bump, point.y + 1));
+        points.push(new Point(point.x - 1, point.y - 1));
+        points.push(new Point(point.x + 1, point.y + 1));
         return points;
     };
 

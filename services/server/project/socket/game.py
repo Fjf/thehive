@@ -1,17 +1,12 @@
-import _thread
 import inspect
 import json
-from collections import defaultdict
 
 from flask_socketio import emit, join_room, leave_room
 
 from project.database import user_service
-from project.database.models import UserModel
-from project.game.Board import Board, Hive
-from project.manage import sio
+from project.game.Board import Hive
+from project.manage import sio, app
 from project.session import session_user
-
-games = defaultdict(Hive)
 
 
 class ObjectEncoder(json.JSONEncoder):
@@ -38,12 +33,12 @@ class ObjectEncoder(json.JSONEncoder):
 
 def system_chat(text, room=None):
     if room is None:
-        emit("chatMessage", {
+        sio.emit("chatMessage", {
             "name": "SYSTEM",
             "message": text
         }, json=True, include_self=True)
     else:
-        emit("chatMessage", {
+        sio.emit("chatMessage", {
             "name": "SYSTEM",
             "message": text
         }, json=True, include_self=True, room=room)
@@ -58,13 +53,15 @@ def on_join(data):
     room = data.get("room")
     join_room(room)
 
-    game = games[room]
-    username = user.name
+    if room not in app.games:
+        app.games[room] = Hive(room)
+
+    game = app.games[room]
 
     update_board(room)
 
     # The player has already joined.
-    if game.get_player(username) is None:
+    if user not in game.spectators:
         # Adds the current player to the room as either spectator or player depending on if they are quick enough.
         player_type = game.add_user(user)
         system_chat("%s has joined as %s" % (user.name, player_type), room=room)
@@ -72,18 +69,21 @@ def on_join(data):
     # Update everybody's player and spectator list.
     update_userlist(room)
 
-    # Send the joined user his remaining tiles
-    player = game.get_player(username)
-    if player is not None:
-        emit("tileAmounts", player.get_tile_amounts(), json=True, include_self=True)
+    # TODO: Send the joined user his remaining tiles
+
+    # if player is not None:
+    #     emit("tileAmounts", player.get_tile_amounts(), json=True, include_self=True)
 
 
 def update_userlist(room):
-    emit("userList", games[room].get_player_list(), json=True, room=room, include_self=True)
+    emit("userList", app.games[room].get_user_list(), json=True, room=room, include_self=True)
 
 
 def update_board(room, to_room=False):
-    game = games[room]
+    if room not in app.games:
+        return
+
+    game = app.games[room]
     board_state = json.dumps(game.export())
     if to_room:
         emit("boardState", board_state, json=True, include_self=True, room=room)
@@ -99,13 +99,13 @@ def on_leave(data):
 
     system_chat("%s left the room." % username, room=room)
 
-    if games[room].get_player(username) is not None:
-        games[room] = Hive()
+    if app.games[room].get_player(username) is not None:
+        app.games[room] = Hive(room)
         system_chat(
             "Because %s has left the room, game has been reset. Please rejoin the room to start a new game." % username,
             room=room)
     else:
-        games[room].remove_user(username)
+        app.games[room].remove_user(username)
 
     update_userlist(room)
     leave_room(room)
@@ -131,38 +131,24 @@ def on_place_tile(request):
     room = request.get("room")
     username = request.get("username")
     data = request.get("data")
-    game = games[room]
+    game = app.games[room]
 
-    # Dont allow moves if the game has finished.
-    if game.winner is not None:
-        system_chat("The game has already finished.")
-        return
+    # if len(game.players) < game.player_limit:
+    #     system_chat("Game is not yet ready to start.")
+    #     return
 
-    if len(game.players) < game.max_players:
-        system_chat("Game is not yet ready to start.")
-        return
-
-    user = game.get_player(username)
+    user = session_user()
     if not game.is_turn(user):
         system_chat("It is not yet your turn.")
         return
 
-    if game.move(user, data):
-        x = int(data.get("new_x"))
-        y = int(data.get("new_y"))
-
-        tile = game.get_tile(x, y)
+    result = game.move(data)
+    if result == 2:
         response = {
-            "username": username,
-            "data": {
-                "x": tile.x,
-                "y": tile.y,
-                "z": tile.z,
-                "image": data.get("image")
-            }
+            "username": username
         }
-
         emit("placeTile", response, json=True, room=room, include_self=True)
+
         # Update userlist with new active player turn.
         update_userlist(room)
 
@@ -178,40 +164,48 @@ def on_place_tile(request):
 
                 user_service.award_elo(winner, loser)
 
-                system_chat("%s has won! Resetting the game." % winner.name, room=room)
+                system_chat("%s has won! Resetting the game." % winner, room=room)
                 game.reset_game()
 
-                update_board(room, to_room=True)
                 update_userlist(room)
+        else:
+            if "CPU" in room:
+                # app.games[room].ai_move("minimax")
+                app.bot.queue.put(room)
+    elif result == 1:
+        response = {
+            "username": username
+        }
+        emit("placeTile", response, json=True, room=room, include_self=True)
 
+    update_board(room, to_room=True)
 
-def do_cpu_move(game, cpu, room):
-    # move = select_move(game, cpu)
-    # game.move(cpu, move)
-    pass
+    if game.n_children() == 0:
+        system_chat("There are no moves left, skipping this turn.", room=room)
+        game.node.contents.board.contents.turn += 1
 
 
 @sio.on("pickupTile")
 def on_pickup_tile(request):
+    user = session_user()
     room = request.get("room")
-    username = request.get("username")
     data = request.get("data")
 
-    game = games[room]
+    game = app.games[room]
 
-    user = game.get_player(username)
     if not game.is_turn(user):
         system_chat("It is not yet your turn.")
         return
 
     x = int(data.get("x"))
     y = int(data.get("y"))
-    if game.can_move(x, y):
+    if not game.can_move(x, y):
         system_chat("Cannot move tile at %d, %d" % (x, y))
         return
 
     # Send available tiles
-    markings = json.dumps(game.export_valid_moves(x, y, user), cls=ObjectEncoder)
+    moves = game.export_valid_moves(x, y, user)
+    markings = json.dumps(moves)
     emit("markedTiles", markings, json=True, include_self=True)
     emit("pickupTile", request, json=True, room=room, include_self=True)
 
@@ -221,10 +215,13 @@ def on_mouse_hover(data):
     room = data.get("room")
     username = data.get("username")
 
-    game = games[room]
+    if room not in app.games:
+        return
+
+    game = app.games[room]
 
     for player in game.players:
-        if player.user.name == username:
+        if player.name == username:
             emit("mouseHover", data, json=True, room=room, include_self=False)
             return
 

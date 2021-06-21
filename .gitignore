@@ -1,3 +1,6 @@
 services/client/node_modules
 venv
 services/server/config.ini
+__pycache__
+.idea
+database.db

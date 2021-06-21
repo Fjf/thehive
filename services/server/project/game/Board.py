@@ -8,19 +8,18 @@ from project.database import user_service
 from project.database.models import UserModel
 
 filename = "libhive"
-file = os.path.join(os.getcwd(), "services", "server", "project", "game", filename)
-print(file)
-lib = CDLL(file)
+file = os.path.join(os.getcwd(), "project", "game", filename)
+lib = CDLL(r"C:\Users\duncan\CLionProjects\hive_engine\c\cmake-build-debug\libhive.dll")
 board_size = c_uint.in_dll(lib, "pboardsize").value
 tile_stack_size = c_uint.in_dll(lib, "ptilestacksize").value
 max_turns = c_uint.in_dll(lib, "pmaxturns").value
-
 
 TYPE_MASK = (1 << 5) - 1
 COLOR_MASK = (1 << 5)
 NUMBER_MASK = (3 << 6)
 PLAYER_WHITE = (0 << 5)
 PLAYER_BLACK = (1 << 5)
+
 
 class Directions:
     TOP_LEFT = 0
@@ -102,9 +101,9 @@ class MMData(Structure):
 
 class Move(Structure):
     _fields_ = [
-        ('tile', c_byte),
-        ('next_to', c_byte),
-        ('direction', c_byte),
+        ('tile', c_ubyte),
+        ('next_to', c_ubyte),
+        ('direction', c_ubyte),
         ('previous_location', c_int),
         ('location', c_int),
     ]
@@ -164,8 +163,30 @@ class Node(Structure):
         lib.print_board(self.board)
 
 
+TTI = [
+    None,
+    "ant",
+    "grasshopper",
+    "beetle",
+    "spider",
+    "queen"
+]
+
+ITT = {
+    "ant": 1,
+    "grasshopper": 2,
+    "beetle": 3,
+    "spider": 4,
+    "queen": 5
+}
+
+
+def type_to_image(type):
+    return TTI[type]
+
+
 class Hive:
-    def __init__(self):
+    def __init__(self, room_name):
         # Set return types for all functions we're using here.
         lib.game_init.restype = POINTER(Node)
         lib.list_get_node.restype = POINTER(Node)
@@ -177,6 +198,9 @@ class Hive:
         # Only players can do actions
         self.players = []
         self.player_limit = 2
+        if "CPU" in room_name:
+            self.player_limit = 1
+
         # Spectators can see all actions (all players are also spectators)
         self.spectators = []
 
@@ -242,18 +266,18 @@ class Hive:
         return False
 
     def export(self):
-        tiles = [[{"type": (t.type & TYPE_MASK),
+        tiles = [[{"image": type_to_image((t.type & TYPE_MASK)),
                    "color": (t.type & COLOR_MASK) >> 5,
                    "number": (t.type & NUMBER_MASK) >> 6,
                    "free": t.free} for t in row] for row in self.node.contents.board.contents.tiles]
-        for t in tiles:
-            print(t)
 
         return tiles
 
     def add_user(self, user: UserModel):
         if len(self.players) < self.player_limit:
             self.players.append(user)
+            if self.player_limit == 1:
+                self.players.append(UserModel("CPU"))
         self.spectators.append(user)
 
     def remove_user(self, username):
@@ -262,11 +286,6 @@ class Hive:
             self.players.remove(user)
 
         self.spectators.remove(user)
-
-    def get_player(self, username):
-        user = user_service.get_user(username)
-        if user in self.players:
-            return user
 
     def finished(self):
         return lib.finished_board(self.node.contents.board)
@@ -285,12 +304,20 @@ class Hive:
         :param y:
         :return:
         """
+        # Update the free property for all tiles.
+        lib.update_can_move(
+            self.node.contents.board,
+            self.node.contents.move.location,
+            self.node.contents.move.previous_location
+        )
+
         tile = self.node.contents.board.contents.tiles[y][x]
         if tile.type == 0:
             return False
+
         return tile.free
 
-    def export_valid_moves(self, x, y, user):
+    def export_valid_moves(self, x, y, user: UserModel):
         """
         Returns a list of all x,y coordinates the tile at x,y can move to.
         If this tile cannot be moved, this function returns an empty list.
@@ -303,15 +330,20 @@ class Hive:
         if not self.can_move(x, y):
             return []
 
-        tile = self.node.contents.board.contents.tiles[y][x]
+        tile = self.node.contents.board.contents.tiles[y][x].type
         white = tile & COLOR_MASK == PLAYER_WHITE
+
         # Check if this tile is a white tile, and the player is player black, or vice versa
         if white and user == self.players[1] or not white and user == self.players[0]:
             # You cannot move a tile which is not your color
             return []
 
+        positions = []
         for child in self.children():
-            print(child.move)
+            if child.contents.move.tile == tile:
+                dx, dy = child.contents.move.location % board_size, child.contents.move.location // board_size
+                positions.append((dx, dy))
+        return positions
 
     def is_turn(self, user):
         """
@@ -320,23 +352,66 @@ class Hive:
         :return:
         """
         to_move = self.node.contents.board.contents.turn % 2
-        return self.players[to_move] == user
+        return self.players[to_move].name == user.name
+
+    def get_user_list(self):
+        return [user.to_json() for user in self.spectators]
+
+    def move(self, data):
+        x = int(data.get("new_x"))
+        y = int(data.get("new_y"))
+
+        original_x = data.get("x", None)
+        if original_x is not None:
+            original_y = data.get("y")
+            previous_location = int(original_y) * board_size + int(original_x)
+        else:
+            previous_location = -1
+
+        location = y * board_size + x
+
+        # Placing the tile back on the original position is valid, and will not use up a turn.
+        if previous_location == location:
+            return 1
+
+        if self.node.contents.board.contents.turn == 0:
+            location = (board_size // 2) * board_size + (board_size // 2)
+        if self.node.contents.board.contents.turn == 1:
+            location = (board_size // 2) * board_size + (board_size // 2) + 1
+
+        # Select the child with the same move as proposed
+        for i, child in enumerate(self.children()):
+            tile_type = TTI[child.contents.move.tile & TYPE_MASK]
+            if child.contents.move.location == location \
+                    and child.contents.move.previous_location == previous_location \
+                    and data.get("image") == tile_type:
+                self.select_child(i)
+                return 2
+
+        return 0
+
+    def ai_move(self, algorithm_type):
+        if algorithm_type == "minimax":
+            pa = PlayerArguments()
+            pa.time_to_move = 2
+            pa.verbose = False
+            pa.evaluation_function = 3  # Current best version
+            lib.minimax(pointer(self.node), pa)
 
 
-
-h = Hive()
-p1 = UserModel(0, "Test")
-p2 = UserModel(0, "Test2")
-h.add_user(p1)
-h.add_user(p2)
-
-for i in range(10):
-    h.generate_moves()
-    h.select_child(random.randint(0, h.n_children() - 1))
-
-prev = h.node.contents.move.location
-h.print()
-print(prev % board_size, prev // board_size)
-h.export_valid_moves(prev % board_size, prev // board_size, p1)
-
-exit(1)
+# h = Hive()
+# p1 = UserModel("Test")
+# p2 = UserModel("Test2")
+# h.add_user(p1)
+# h.add_user(p2)
+#
+# for i in range(10):
+#     h.generate_moves()
+#     h.select_child(random.randint(0, h.n_children() - 1))
+#
+# prev = h.node.contents.move.location
+# h.print()
+# x, y = prev % board_size, prev // board_size
+# h.export_valid_moves(x, y, p2)
+#
+# exit(1)
