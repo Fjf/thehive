@@ -266,10 +266,29 @@ class Hive:
         return False
 
     def export(self):
-        tiles = [[{"image": type_to_image((t.type & TYPE_MASK)),
-                   "color": (t.type & COLOR_MASK) >> 5,
-                   "number": (t.type & NUMBER_MASK) >> 6,
-                   "free": t.free} for t in row] for row in self.node.contents.board.contents.tiles]
+        tiles = []
+        for y, row in enumerate(self.node.contents.board.contents.tiles):
+            tr = []
+            for x, tile in enumerate(row):
+                ts = []
+                for stack in self.node.contents.board.contents.stack:
+                    if stack.location == y * board_size + x:
+                        ts.insert(stack.z, {
+                            "image": type_to_image((stack.type & TYPE_MASK)),
+                            "color": (stack.type & COLOR_MASK) >> 5,
+                            "number": (stack.type & NUMBER_MASK) >> 6,
+                            "free": False
+                        })
+
+                ts.append({
+                    "image": type_to_image((tile.type & TYPE_MASK)),
+                    "color": (tile.type & COLOR_MASK) >> 5,
+                    "number": (tile.type & NUMBER_MASK) >> 6,
+                    "free": tile.free
+                })
+
+                tr.append(ts)
+            tiles.append(tr)
 
         return tiles
 
@@ -397,7 +416,6 @@ class Hive:
             pa.verbose = False
             pa.evaluation_function = 3  # Current best version
             lib.minimax(pointer(self.node), pa)
-
 
 # h = Hive()
 # p1 = UserModel("Test")

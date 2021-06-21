@@ -60,17 +60,20 @@ export function HexGrid() {
     this.setBoardState = function(data) {
         this.boardState = {};
         for (const [y, row] of Object.entries(data)) {
-            for (const [x, entry] of Object.entries(row)) {
+            for (const [x, values] of Object.entries(row)) {
                 let tile;
 
-                if (entry.image === null) continue;
+                let z = 0;
+                for (let val of values) {
+                    if (val.image === null) continue;
 
-                tile = this.makeTile(entry.image, x, y, this.tileClickHandler);
-                tile.number = entry.number;
-                tile.color = entry.color;
-                tile.z = 0;
+                    tile = this.makeTile(val.image, x, y, this.tileClickHandler);
+                    tile.number = val.number;
+                    tile.color = val.color;
+                    tile.z = z++;
 
-                this.putTile(tile, x, y);
+                    this.putTile(tile, x, y);
+                }
             }
         }
     };
