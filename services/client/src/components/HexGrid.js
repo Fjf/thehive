@@ -78,6 +78,33 @@ export function HexGrid() {
         }
     };
 
+    this.panning = {
+        x: 0,
+        y: 0,
+        totalFrames: 0,
+        frames: 0,
+    }
+    this.panTo = function(x, y, nFrames) {
+        let xIncrement = this.hexSize * 0.866025;  // (sqrt(3) / 2)
+        let yIncrement = this.hexSize * 1.5;
+        this.panning.x = this.offset.x - (-(x + 0.5) * xIncrement + this.canvas.width / 2);
+        this.panning.y = this.offset.y - (-y * yIncrement + this.canvas.height / 2);
+
+        this.panning.frames = nFrames;
+        this.panning.totalFrames = nFrames;
+    }
+
+    this.updateOffset = function() {
+        if (this.panning.frames > 0) {
+            this.panning.frames--;
+
+            const progress = this.panning.frames / this.panning.totalFrames;
+
+            this.offset.x -= this.panning.x * Math.sin(Math.PI * progress) / 6.31;
+            this.offset.y -= this.panning.y * Math.sin(Math.PI * progress) / 6.31;
+        }
+    }
+
     this.drawGrid = function() {
         if (this.context == null) return;
 
@@ -136,6 +163,7 @@ export function HexGrid() {
 
     this.update = function() {
         this.drawGrid();
+        this.updateOffset();
 
         // TODO: check performance of dictionary querying.
         for (const [y, row] of Object.entries(this.boardState)) {

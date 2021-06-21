@@ -61,7 +61,7 @@ def on_join(data):
     update_board(room)
 
     # The player has already joined.
-    if user not in game.spectators:
+    if user.name not in [s.name for s in game.spectators]:
         # Adds the current player to the room as either spectator or player depending on if they are quick enough.
         player_type = game.add_user(user)
         system_chat("%s has joined as %s" % (user.name, player_type), room=room)
@@ -69,10 +69,8 @@ def on_join(data):
     # Update everybody's player and spectator list.
     update_userlist(room)
 
-    # TODO: Send the joined user his remaining tiles
-
-    # if player is not None:
-    #     emit("tileAmounts", player.get_tile_amounts(), json=True, include_self=True)
+    if user is not None:
+        emit("tileAmounts", game.export_tile_amounts(user), json=True, include_self=True)
 
 
 def update_userlist(room):
@@ -144,10 +142,13 @@ def on_place_tile(request):
 
     result = game.move(data)
     if result == 2:
-        response = {
-            "username": username
-        }
-        emit("placeTile", response, json=True, room=room, include_self=True)
+        x = game.node.contents.move.location % game.board_size
+        y = game.node.contents.move.location / game.board_size
+        emit("placeTile", {
+            "username": username,
+            "x": x,
+            "y": y,
+        }, json=True, room=room, include_self=True)
 
         # Update userlist with new active player turn.
         update_userlist(room)
@@ -162,10 +163,15 @@ def on_place_tile(request):
                 loser = game.players[result % 2].name
                 emit("finished", {"winner": winner, "loser": loser}, json=True, room=room, include_self=True)
 
-                user_service.award_elo(winner, loser)
+                if "CPU" not in room:
+                    user_service.award_elo(winner, loser)
 
                 system_chat("%s has won! Resetting the game." % winner, room=room)
+                game.players = list(reversed(game.players))
                 game.reset_game()
+
+                if "CPU" in room and game.players[0].name == "CPU":
+                    app.bot.queue.put(room)
 
                 update_userlist(room)
         else:
@@ -179,6 +185,7 @@ def on_place_tile(request):
         emit("placeTile", response, json=True, room=room, include_self=True)
 
     update_board(room, to_room=True)
+    emit("tileAmounts", game.export_tile_amounts(user), json=True, include_self=True)
 
     if game.n_children() == 0:
         system_chat("There are no moves left, skipping this turn.", room=room)

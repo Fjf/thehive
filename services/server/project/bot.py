@@ -32,13 +32,21 @@ class Bot:
             time.sleep(self.interval)
             try:
                 room = self.queue.get(block=False)
+                game = self.app.games[room]
 
-                self.app.games[room].ai_move("minimax")
-
+                game.ai_move("minimax")
                 with self.app.test_request_context('/'):
                     board_state = json.dumps(self.app.games[room].export())
 
+                    x = game.node.contents.move.location % game.board_size
+                    y = game.node.contents.move.location / game.board_size
+
                     sio.emit("boardState", board_state, json=True, include_self=True)
+                    sio.emit("placeTile", {
+                        "username": "CPU",
+                        "x": x,
+                        "y": y,
+                    }, json=True, room=room, include_self=True)
 
                 if self.app.games[room].n_children() == 0:
                     self.app.games[room].node.contents.board.contents.turn += 1

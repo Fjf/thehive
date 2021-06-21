@@ -1,6 +1,6 @@
 from typing import Optional
 
-from project.database import request_session
+from project.database import db
 from project.database.models import UserModel
 
 
@@ -12,9 +12,8 @@ def get_user(uid=None, name=None) -> Optional[UserModel]:
     :param name:
     :return:
     """
-
-    db = request_session()
-    sub = db.query(UserModel)
+    session = db.session()
+    sub = session.query(UserModel)
 
     if uid is not None:
         sub = sub.filter(UserModel.id == uid)
@@ -23,7 +22,8 @@ def get_user(uid=None, name=None) -> Optional[UserModel]:
     else:
         raise ValueError("`uid` and `name` cannot both be `None`.")
 
-    return sub.one_or_none()
+    result = sub.one_or_none()
+    return result
 
 
 def expect_result(p1, p2):
@@ -32,7 +32,7 @@ def expect_result(p1, p2):
 
 
 def award_elo(winner_name: str, loser_name: str):
-    db = request_session()
+    session = db.session()
 
     winner = get_user(name=winner_name)
     loser = get_user(name=loser_name)
@@ -43,5 +43,5 @@ def award_elo(winner_name: str, loser_name: str):
     loser.elo = loser.elo - 20 * (1 - result)
 
     # Update the values.
-    db.commit()
+    session.commit()
 

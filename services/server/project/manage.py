@@ -7,6 +7,7 @@ from flask_cors import CORS
 from flask_socketio import SocketIO
 
 from project.bot import Bot
+from project.database import create_all_models
 
 global app
 global sio
@@ -67,16 +68,12 @@ def init():
     import project.views.index  # noqa
     import project.socket  # noqa
 
-    import project.database.models
-
     # Import database and set it up.
-    import project.database
-    project.database.register_teardown(app)
-    print("Attempting to connect to", app.config["database_url"])
-    project.database.init_db(app.config["database_url"])
+    import project.database.models  # noqa
+    import project.database  # noqa
 
     # Create model
-    project.database.metadata_create_all()
+    create_all_models()
 
     # Start ai move handler thread
     app.bot = Bot(app)

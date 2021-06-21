@@ -118,7 +118,6 @@ export default function Game() {
             hexGrid.audio_files["tile_sound_2"].play();
 
             hexGrid.markedTiles = [];
-            let data = response.data;
 
             // Send information when you are one of the players.
             if (response.username === username) {
@@ -132,6 +131,9 @@ export default function Game() {
                     data: undefined
                 })
             }
+
+            if (response.x !== undefined)
+                hexGrid.panTo(response.x, response.y, 10)
         });
 
         socket.on("markedTiles", (rawResponse) => {
@@ -226,7 +228,10 @@ export default function Game() {
         hexGrid.selection = null;
     }
 
-    return <div className={"content-wrapper"}>
+    return <div className={"content-wrapper"}
+            onKeyDown={(ev) => {
+                 if (ev.key === "Escape") unselect();
+             }}>
         <div className={"left-menu-column"}>
             <div className={"column-data"}>
                 {isConnected ? "Connected" : "Disconnected"}
@@ -256,10 +261,7 @@ export default function Game() {
                 </canvas>
                 <a href={"https://www.ultraboardgames.com/hive/game-rules.php"} target="_blank">Rules</a>
             </div>
-            <div id={"tile-selection"}
-                 onKeyDown={(ev) => {
-                     if (ev.key === "Escape") unselect();
-                 }}>
+            <div id={"tile-selection"}>
                 {
                     tileNames.map((tileSelection, i) => {
                         let srcName = "static/images/" + tileSelection.name + ".png";

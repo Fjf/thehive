@@ -2,9 +2,9 @@ from flask import request
 from werkzeug.exceptions import Conflict, NotFound
 
 from project.api import api
-from project.database import user_service, request_session
+from project.database import user_service, db
 from project.database.models import UserModel
-from project.session import session_user_set
+from project.session import session_user_set, session_user
 
 
 @api.route("users/login", methods=["POST"])
@@ -34,13 +34,12 @@ def register():
 
     user = UserModel(username, password)
 
-    db = request_session()
-    db.add(user)
-    db.commit()
-
-    user = user_service.get_user(name=username)
+    session = db.session()
+    session.add(user)
+    session.commit()
 
     session_user_set(user)
+    user = session_user()
     return user.to_json()
 
 

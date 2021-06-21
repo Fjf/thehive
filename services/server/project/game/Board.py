@@ -1,5 +1,4 @@
 import ctypes
-import random
 from ctypes import *
 import os
 
@@ -195,6 +194,8 @@ class Hive:
         lib.performance_testing.restype = ctypes.c_int
         lib.finished_board.restype = ctypes.c_int
 
+        self.board_size = board_size
+
         # Only players can do actions
         self.players = []
         self.player_limit = 2
@@ -296,7 +297,7 @@ class Hive:
         if len(self.players) < self.player_limit:
             self.players.append(user)
             if self.player_limit == 1:
-                self.players.append(UserModel("CPU"))
+                self.players.append(UserModel(name="CPU"))
         self.spectators.append(user)
 
     def remove_user(self, username):
@@ -335,6 +336,26 @@ class Hive:
             return False
 
         return tile.free
+
+
+
+
+    def export_tile_amounts(self, user: UserModel):
+        uid = -1
+        for i, player in enumerate(self.players):
+            if player.name == user.name:
+                uid = i
+        if uid == -1:
+            return None
+
+        p = self.node.contents.board.contents.players[uid]
+        return [
+            {"name": "queen", "amount": p.queens_left},
+            {"name": "spider", "amount": p.spiders_left},
+            {"name": "beetle", "amount": p.beetles_left},
+            {"name": "grasshopper", "amount": p.grasshoppers_left},
+            {"name": "ant", "amount": p.ants_left},
+        ]
 
     def export_valid_moves(self, x, y, user: UserModel):
         """
