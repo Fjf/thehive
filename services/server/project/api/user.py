@@ -38,6 +38,8 @@ def register():
     db.add(user)
     db.commit()
 
+    user = user_service.get_user(name=username)
+
     session_user_set(user)
     return user.to_json()
 

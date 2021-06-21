@@ -92,6 +92,7 @@ html {
 
 .chat-wrapper {
     overflow-y: scroll;
+    height: 600px;
 
     flex: 2 2 auto;
     display: flex;

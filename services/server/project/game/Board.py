@@ -8,8 +8,8 @@ from project.database import user_service
 from project.database.models import UserModel
 
 filename = "libhive"
-file = os.path.join(os.getcwd(), "project", "game", filename)
-lib = CDLL(r"C:\Users\duncan\CLionProjects\hive_engine\c\cmake-build-debug\libhive.dll")
+file = os.path.join(os.getcwd(), "services", "server", "project", "game", filename)
+lib = CDLL(file)
 board_size = c_uint.in_dll(lib, "pboardsize").value
 tile_stack_size = c_uint.in_dll(lib, "ptilestacksize").value
 max_turns = c_uint.in_dll(lib, "pmaxturns").value
