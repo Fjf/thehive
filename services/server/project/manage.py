@@ -66,7 +66,7 @@ def init():
 
     # Setup routes
     import project.views.index  # noqa
-    import project.socket  # noqa
+    import project.game_socket  # noqa
 
     # Import database and set it up.
     import project.database.models  # noqa

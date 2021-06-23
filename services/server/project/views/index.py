@@ -4,7 +4,8 @@ from project.manage import app
 
 
 @app.route('/', methods=["GET"])
-def index():
+@app.route('/<path:text>', methods=["GET"])
+def index(text=None):
     return render_template("index.html")
 
 

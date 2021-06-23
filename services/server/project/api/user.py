@@ -1,5 +1,5 @@
 from flask import request
-from werkzeug.exceptions import Conflict, NotFound
+from werkzeug.exceptions import Conflict, NotFound, BadRequest
 
 from project.api import api
 from project.database import user_service, db
@@ -20,6 +20,7 @@ def login():
     if user.check_password(password):
         session_user_set(user)
         return user.to_json()
+    return BadRequest("Password does not match.")
 
 
 @api.route("users/register", methods=["POST"])

@@ -36,6 +36,7 @@ const initialTileNames = [
 export default function Game() {
     let board = React.useRef(null);
     const [tileNames, setTileNames] = useState(initialTileNames);
+    const [loops, setLoops] = useState({hover: 0, board: 0})
 
     const [cookies, setCookie, removeCookie] = useCookies(['room']);
     const [room, setRoom] = useState("");
@@ -65,11 +66,18 @@ export default function Game() {
         let username = userService.getUser().name;
         socket.emit("leave", {room: room, username: username});
         setRoom("");
+
+        clearInterval(loops.hover);
+        clearInterval(loops.board);
+
         setIsConnected(false);
     }
 
-    function buttonConnectGame() {
-        connectGame(room);
+    function buttonConnectGame(roomName) {
+        if (roomName === undefined)
+            connectGame(room);
+        else
+            connectGame(roomName);
     }
 
     function connectGame(room) {
@@ -187,7 +195,7 @@ export default function Game() {
             }
         });
 
-        setInterval(() => {
+        const hover = setInterval(() => {
             // Send current mouse state if a tile is selected.
             if (hexGrid.selection === null) return;
 
@@ -208,7 +216,12 @@ export default function Game() {
             )
         }, 1000 / 30);
 
-        setInterval(() => { socket.emit("getBoard", {room: room}); }, 1000/30);
+        const board = setInterval(() => { socket.emit("getBoard", {room: room}); }, 1000/30);
+
+        setLoops({
+            hover: hover,
+            board: board,
+        });
 
         setIsConnected(true);
     }
@@ -242,6 +255,11 @@ export default function Game() {
                     value={room}
                     onChange={(event) => setRoom(event.target.value)}
                 />
+                {!isConnected ? <Button variant="contained" style={{marginBottom: 10}} onClick={() => {
+                    const roomName = "CPU" + Math.random().toString(36).substring(2,7);
+                    setRoom(roomName);
+                    buttonConnectGame(roomName);
+                }}>Play CPU</Button> : <></>}
                 {!isConnected ? <Button onClick={buttonConnectGame} variant="contained">Connect</Button>
                     : <Button onClick={buttonDisconnectGame} variant="contained">Disconnect</Button>
                 }
@@ -260,6 +278,12 @@ export default function Game() {
                 <canvas ref={board} className={"canvas"} id={"canvas"}>
                 </canvas>
                 <a href={"https://www.ultraboardgames.com/hive/game-rules.php"} target="_blank">Rules</a>
+                <a>Select a tile on the right bar when you want to place it on the board.
+                    Pressing 'Esc' will release this tile and put it back on the bar.
+                    For the tiles on the board, if you click on them, it will show the available spots for that tile.
+                    Clicking in a valid spot will move the selected tile to that new position.
+                    Placing the tile back on the original spot will place the tile back and not use up your move.
+                </a>
             </div>
             <div id={"tile-selection"}>
                 {

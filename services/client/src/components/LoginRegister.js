@@ -24,7 +24,7 @@ export default function LoginRegister(props) {
         setCookie("loginData", loginData, {sameSite: "strict"});
 
         userService.login(username, password).then(r => {
-            props.history.push("/game");
+            window.location.href = "/game";
         });
     }
 
@@ -38,7 +38,7 @@ export default function LoginRegister(props) {
         setCookie("loginData", loginData);
 
         userService.registerUser(username, password).then(r => {
-            props.history.push("/game");
+            window.location.href = "/game";
         });
     }
 

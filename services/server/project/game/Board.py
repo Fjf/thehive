@@ -3,8 +3,9 @@ from ctypes import *
 import os
 
 # Load DLL and extract values for the struct initialization.
-from project.database import user_service
-from project.database.models import UserModel
+from project.database import user_service, db
+from project.database.models import UserModel, ResultModel
+from project.manage import app
 
 filename = "libhive"
 file = os.path.join(os.getcwd(), "services", "server", "project", "game", filename)
@@ -195,6 +196,7 @@ class Hive:
         lib.finished_board.restype = ctypes.c_int
 
         self.board_size = board_size
+        self.room_name = room_name
 
         # Only players can do actions
         self.players = []
@@ -294,11 +296,23 @@ class Hive:
         return tiles
 
     def add_user(self, user: UserModel):
+        t = "spectator"
         if len(self.players) < self.player_limit:
             self.players.append(user)
             if self.player_limit == 1:
-                self.players.append(UserModel(name="CPU"))
+                # Add bot if this is a bot room
+                bot = UserModel(name="CPU")
+                bot.id = -1
+                self.players.append(bot)
+                self.spectators.append(bot)
+                t = "player"
         self.spectators.append(user)
+        return t
+
+    def get_player(self, username):
+        for player in self.players:
+            if player.name == username:
+                return player
 
     def remove_user(self, username):
         user = user_service.get_user(username)
@@ -311,11 +325,44 @@ class Hive:
         return lib.finished_board(self.node.contents.board)
 
     def reset_game(self):
+        self.players = list(reversed(self.players))
+
         # Cleanup old node
         lib.node_free(self.node)
         node = lib.default_init()
         self.node = node
         self.node.contents.board = lib.init_board()
+
+    def finalize_and_reset(self):
+        from project.manage import sio
+        from project.game_socket.game import system_chat, update_userlist
+
+        room = self.room_name
+
+        result = self.finished()
+
+        session = db.session()
+        session.add(ResultModel(self.players[0].name, self.players[1].name, result))
+        session.commit()
+
+        if result == 3:
+            # Its a draw.
+            sio.emit("finished", {"winner": "None", "loser": "None"}, json=True, room=room, include_self=True)
+        else:
+            winner = self.players[result - 1].name
+            loser = self.players[result % 2].name
+            sio.emit("finished", {"winner": winner, "loser": loser}, json=True, room=room, include_self=True)
+
+            if "CPU" not in self.room_name:
+                user_service.award_elo(winner, loser)
+
+            system_chat("%s has won! Resetting the game." % winner, room=room)
+            self.reset_game()
+
+            if "CPU" in self.room_name and self.players[0].name == "CPU":
+                app.bot.queue.put(room)
+
+            update_userlist(room)
 
     def can_move(self, x, y):
         """
@@ -336,9 +383,6 @@ class Hive:
             return False
 
         return tile.free
-
-
-
 
     def export_tile_amounts(self, user: UserModel):
         uid = -1
@@ -395,7 +439,18 @@ class Hive:
         return self.players[to_move].name == user.name
 
     def get_user_list(self):
-        return [user.to_json() for user in self.spectators]
+        result = []
+        for user in self.spectators:
+            user_type = "Spectator"
+            for i, player in enumerate(self.players):
+                if user.name == player.name:
+                    user_type = "White" if i == 0 else "Black"
+            elem = user.to_json()
+            elem.update({
+                "type": user_type
+            })
+            result.append(elem)
+        return result
 
     def move(self, data):
         x = int(data.get("new_x"))

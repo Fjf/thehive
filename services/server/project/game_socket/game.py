@@ -74,7 +74,7 @@ def on_join(data):
 
 
 def update_userlist(room):
-    emit("userList", app.games[room].get_user_list(), json=True, room=room, include_self=True)
+    sio.emit("userList", app.games[room].get_user_list(), json=True, room=room, include_self=True)
 
 
 def update_board(room, to_room=False):
@@ -84,9 +84,9 @@ def update_board(room, to_room=False):
     game = app.games[room]
     board_state = json.dumps(game.export())
     if to_room:
-        emit("boardState", board_state, json=True, include_self=True, room=room)
+        sio.emit("boardState", board_state, json=True, include_self=True, room=room)
     else:
-        emit("boardState", board_state, json=True, include_self=True)
+        sio.emit("boardState", board_state, json=True, include_self=True)
 
 
 @sio.on("leave")
@@ -97,7 +97,7 @@ def on_leave(data):
 
     system_chat("%s left the room." % username, room=room)
 
-    if app.games[room].get_player(username) is not None:
+    if app.games[room].get_player(username):
         app.games[room] = Hive(room)
         system_chat(
             "Because %s has left the room, game has been reset. Please rejoin the room to start a new game." % username,
@@ -155,25 +155,7 @@ def on_place_tile(request):
 
         result = game.finished()
         if result > 0:
-            if result == 3:
-                # Its a draw.
-                emit("finished", {"winner": "None", "loser": "None"}, json=True, room=room, include_self=True)
-            else:
-                winner = game.players[result - 1].name
-                loser = game.players[result % 2].name
-                emit("finished", {"winner": winner, "loser": loser}, json=True, room=room, include_self=True)
-
-                if "CPU" not in room:
-                    user_service.award_elo(winner, loser)
-
-                system_chat("%s has won! Resetting the game." % winner, room=room)
-                game.players = list(reversed(game.players))
-                game.reset_game()
-
-                if "CPU" in room and game.players[0].name == "CPU":
-                    app.bot.queue.put(room)
-
-                update_userlist(room)
+            game.finalize_and_reset()
         else:
             if "CPU" in room:
                 # app.games[room].ai_move("minimax")

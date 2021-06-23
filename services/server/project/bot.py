@@ -25,7 +25,7 @@ class Bot:
 
     def queue_handler(self):
         from project.manage import sio
-        from project.socket.game import system_chat
+        from project.game_socket.game import system_chat
 
         print("Started bot queue handler thread.")
         while self.running:
@@ -35,6 +35,7 @@ class Bot:
                 game = self.app.games[room]
 
                 game.ai_move("minimax")
+
                 with self.app.test_request_context('/'):
                     board_state = json.dumps(self.app.games[room].export())
 
@@ -52,5 +53,9 @@ class Bot:
                     self.app.games[room].node.contents.board.contents.turn += 1
                     system_chat("No moves available, skipping turn.")
                     self.queue.put(room)
+
+                if game.finished() > 0:
+                    game.finalize_and_reset()
+
             except queue.Empty as e:
                 pass
